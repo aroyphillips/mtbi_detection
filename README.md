@@ -6,6 +6,8 @@
 
 Repository for analyzing thee acute mTBI data from Mission Connect Study uploaded to FITBIR: doi: 10.23718/FITBIR/1518866
 
+Will be completed prior to publication submission.
+
 ## Project Organization
 
 ```
