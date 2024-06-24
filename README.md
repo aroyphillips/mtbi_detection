@@ -18,6 +18,8 @@ Will be completed prior to publication submission.
 │   ├── external       <- Data from third party sources.
 │   ├── interim        <- Intermediate data that has been transformed.
 │   ├── processed      <- The final, canonical data sets for modeling.
+    ├── tables         <- Metadata files, e.g. the segment annotations
+    ├── tables         <- Internal files needed to run code (e.g. the scripts)
 │   └── raw            <- The original, immutable data dump.
 │
 ├── docs               <- A default mkdocs project; see mkdocs.org for details
@@ -45,16 +47,21 @@ Will be completed prior to publication submission.
     │
     ├── __init__.py    <- Makes mtbi_detection a Python module
     │
+    ├── demo.py    <- code for new user to run once the FITBIR data is downloaded
+    │
     ├── data           <- Scripts to download or generate data
-    │   └── make_dataset.py
+    │   ├── extract_data.py <- Code to convert the FITBIR data to MNE format fif files
+    │   ├── load_open_closed_data.py <- Code to segment the EEG files into eyes open / eyes closed segments
+    │   └── filter_data.py, rereference_data.py, cleanpath.py, data_utils.py <- Scripts with helper functions to run the above two scripts
     │
     ├── features       <- Scripts to turn raw data into features for modeling
-    │   └── build_features.py
+    │   └── compute_all_features.py <- Extracts all sets of features
     │
     ├── models         <- Scripts to train models and then use trained models to make
     │   │                 predictions
-    │   ├── predict_model.py
-    │   └── train_model.py
+    │   ├── train_base_models.py
+    │   ├── train_meta_models.py
+        └── evaluate_models.py
     │
     └── visualization  <- Scripts to create exploratory and results oriented visualizations
         └── visualize.py
