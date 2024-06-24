@@ -1,1 +1,1 @@
-from mtbi_detection import config  # noqa: F401
+# from mtbi_detection import config  # noqa: F401
