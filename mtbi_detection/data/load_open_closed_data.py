@@ -1,11 +1,8 @@
 import numpy as np
-import pandas as pd
 import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.data.rereference_data as rd
 import mtbi_detection.data.filter_data as fd
 import mtbi_detection.data.data_utils as du
-import mtbi_detection.data.cleanpath as cleanpath
-import mne
 import time
 import os 
 import glob 
@@ -29,20 +26,14 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         else:
             temp_datapath = datapath
         savepath = os.path.join(os.path.dirname(temp_datapath), 'open_closed_segments')
-    
-    good_savepath = input(f"Savepath: {savepath}, is this correct? (y/n)")
-    if good_savepath == 'n':
-        savepath = input("Enter new savepath: ")
-    elif good_savepath == 'y':
-        print(f"Savepath: {savepath}")
-    else:
-        print("Invalid input, exiting...")
-        return
 
-    if not os.path.exists(os.path.join(savepath, 'params')):
-        os.makedirs(os.path.join(savepath, 'params'))
-    else:
-        cleanpath.cleanpath(os.path.join(savepath, 'params'))
+        savepath = du.check_savepath(savepath)
+
+        du.clean_params_path(savepath)
+
+        with open('open_closed_path.txt', 'w') as f:
+            f.write(savepath)
+
 
 
     params = {
@@ -408,9 +399,9 @@ if __name__ == "__main__":
     parser.add_argument('--order', type=int, default=6)
     parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
     parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
-    parser.add_argument('--num_subjs', type=int, default=3)
+    parser.add_argument('--num_subjs', type=int, default=151)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--method', type=str, default='linked')
+    parser.add_argument('--method', type=str, default='CSD')
     parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
     parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
