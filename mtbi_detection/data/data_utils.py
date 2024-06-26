@@ -9,6 +9,7 @@ import sys
 import sklearn
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
+import mtbi_detection.data.cleanpath as cleanpath
 
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
 
@@ -495,7 +496,7 @@ def only_log_if(df, all_log_conditions=[lambda x: x < 1e-2], any_log_conditions=
         return log_df
     
 
-def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename='params.json', make_new_paramdir=True, save_early=False, skip_ui=False):
+def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename='params.json', make_new_paramdir=True, save_early=True, skip_ui=False):
     """
     Given a savepath and a dictionary of params, check if there is a matching params file in the savepath. If there is, then set the savepath to the directory of the params file. If there is not, then create a new directory in the savepath/params directory and set the savepath to that directory.
     Inputs:
@@ -568,6 +569,29 @@ def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename
         newsavepath = new_paramdir
 
     return newsavepath, found_match
+
+def check_savepath(savepath):
+    """
+    Given a savepath, check if the savepath is correct. If it is not, then ask the user for a new savepath
+    """
+    good_savepath = input(f"Savepath: {savepath}, is this correct? (y/n)")
+    if good_savepath == 'n':
+        savepath = input("Enter new savepath: ")
+    elif good_savepath == 'y':
+        print(f"Savepath: {savepath}")
+    else:
+        raise ValueError(f"Invalid input {good_savepath} instead of y/n. Exiting...")
+    return savepath
+
+def clean_params_path(savepath):
+    """
+    Given a savepath to be used for saving params, clean the path by removing all the unused params subdirectories
+    """
+    if not os.path.exists(os.path.join(savepath, 'params')):
+        os.makedirs(os.path.join(savepath, 'params'))
+    else:
+        cleanpath.cleanpath(os.path.join(savepath, 'params'))
+    
 
 # need a function to repeat the values in a column through nans until the next nonnan value appears
 def replicate_value_through_nans(df, col='SubjectIDNum.21'):

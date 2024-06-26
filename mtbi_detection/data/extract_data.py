@@ -1,4 +1,5 @@
 # code to convert the FITBIR Mission Connect data https://fitbir.nih.gov/study_profile/350 to python readable MNE format
+# example usage: python extract_data.py --datapath /path/to/downloaded/fitbir_data --savepath /path/to/save/processed/data
 import numpy as np
 import pandas as pd
 import os
@@ -102,6 +103,12 @@ def main(dlpath='/home/ap60/Downloads/fitbir_downloads/fitbir_mission_connect_do
     with open(savepath+'preprocess_save_times.json', 'w') as fp:
         json.dump(savetimes, fp)
 
+    # save the savepath to extracted_path.txt
+    with open('extracted_path.txt', 'w') as f:
+        f.write(savepath)
+    with open('download_path.txt', 'w') as f:
+        f.write(dlpath)
+
     return data_df
 
 def save_protocol(data_df, savepath):
@@ -128,7 +135,7 @@ def save_protocol(data_df, savepath):
         start = time.time()
         print(f"Saving subject {subj} ({idx}/{len(unique_subjects)})", end='\r')
         # check if there is a folder for this subject savepath+subj
-        savepathdir = savepath+str(subj)
+        savepathdir = os.path.join(savepath, subj)
         if not os.path.exists(savepathdir):
             os.mkdir(savepathdir)
         
@@ -197,7 +204,7 @@ def test_logs(all_logs):
         print("TEST on", num)
         try:
             np.isnan(log)
-            print("{} is empty".format(num))
+            print(f"{num} is empty")
             continue
         except:
             if len(log['onset']) != len(log['description']):
@@ -325,8 +332,8 @@ def save_labels(datapath, savepath):
     return label_df
 
 def check_labels(label_df, datapath):
-    # GCS_FILE = glob.glob(datapath+"*GCS*")[0]
-    # GCS_df = pd.read_csv(GCS_FILE)
+    GCS_FILE = glob.glob(datapath+"*GCS*")[0]
+    GCS_df = pd.read_csv(GCS_FILE)
     datafiles = os.listdir(datapath)
     # finds all the csv files
     csv_files = [file for file in datafiles if file.endswith('csv')]
@@ -335,23 +342,17 @@ def check_labels(label_df, datapath):
 
     # gets the list of RecordRawDataFiles
     eeg_df, eeg_idx = get_info_df("EEG", csv_files, load_csvs, datafiles)
-    # make a dataframe that only includes the EEG_FITBIR.Main.SubjectIDNum and the EEG_FITBIR.Main.CaseContrlInd
-    label_df = eeg_df[['EEG_FITBIR.Main.SubjectIDNum', 'EEG_FITBIR.Main.CaseContrlInd']]
 
-    # now simply the label_df by removing duplicate rows
-    # make sure all the subj/label pairs are in the GCS_df
-    # subjs = label_df['SubjectIDNum']
-    # labels = label_df['CaseContrlInd']
     subjs = eeg_df['EEG_FITBIR.Main.SubjectIDNum']
     labels = eeg_df['EEG_FITBIR.Main.CaseContrlInd']
-    conversion = {0: "Control", 1: "Case"}
     for subj, label in zip(subjs, labels):
-        assert subj in label_df['GCS.Main.SubjectIDNum'], f"{subj} not in GCS_df"
-        gcs_subj_row = label_df.loc[label_df['GCS.Main.SubjectIDNum'] == subj]
-
-        assert label == gcs_subj_row['GCS.Main.CaseContrlInd'].values[0], f"Label for {subj} is not correct: expected {conversion[label]} but got {gcs_subj_row['GCS.Main.CaseContrlInd'].values[0]}"
-        
-    print(f"All labels are correct")
+        assert subj in GCS_df['GCS.Main.SubjectIDNum'], f"{subj} not in GCS_df"
+        if subj in label_df['SubjectIDNum']:
+            subj_row = label_df.loc[label_df['SubjectIDNum'] == subj]
+            assert label == subj_row['CaseContrlInd'].values[0], f"Label for {subj} is not correct: expected {label} but got {subj_row['GCS.Main.CaseContrlInd'].values[0]}"
+        else:
+            subj_row = GCS_df.loc[GCS_df['GCS.Main.SubjectIDNum'] == subj]
+            assert subj_row['GCS.Main.CaseContrlInd'].values[0] == label, f"Label for {subj} is not correct: expected {label} but got {subj_row['GCS.Main.CaseContrlInd'].values[0]}"
     
 if __name__ == "__main__":
 
@@ -360,8 +361,3 @@ if __name__ == "__main__":
     parser.add_argument('--savepath', type=str, help='path to save the processed data', default='/scratch/ap60/mtbi_detection/data/raw_mne_files/')
     args = parser.parse_args()
     data_df = main(dlpath=args.datapath, savepath=args.savepath)
-    # save the savepath to extract_path.txt
-    with open('extract_path.txt', 'w') as f:
-        f.write(args.savepath)
-    with open('download_path.txt', 'w') as f:
-        f.write(args.datapath)
