@@ -5,10 +5,10 @@ import mne
 import numpy as np
 import mtbi_detection.data.load_open_closed_data as locd
 import mtbi_detection.data.data_utils as du
-import mtbi_detection.data.cleanpath as cleanpath
 import os
 import json
 import argparse
+import scipy
 import pprint
 from joblib import Parallel, delayed
 
@@ -34,12 +34,12 @@ def main(locd_params = {
         'ecg_h_freq': 16,
         'ecg_thresh': 'auto',
         'ecg_method': 'correlation'
-    }, pad=False, bandwidth=1, which_segment='avg',
-    n_jobs=1, save=True, num_load_subjs=None, locd_savepath=LOCD_DATAPATH):
+    }, interpolate_spectrum=1000, freq_interp_method='linear',bandwidth=1, which_segment='avg',
+    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH):
     # define loading parameters
     print("Loading parameters: {}".format(locd_params))
     params = extract_locd_params(**locd_params)
-    params['pad'] = pad
+    params['interpolate_spectrum'] = interpolate_spectrum
     params['bandwidth'] = bandwidth
     params['which_segment'] = which_segment
     
@@ -53,42 +53,51 @@ def main(locd_params = {
 
     found_match = False
     paramfile = 'params.json'
+    
     savepath, found_match = du.check_and_make_params_folder(savepath, params, paramfile=paramfile)
     if found_match:
         print("Loading data from {}".format(savepath))
-        output_dict = load_all_transform_data_paths(savepath=savepath, subjs=None, num_load_subjs=num_load_subjs)
+        output_dict = load_all_transform_data_paths(savepath=savepath, subjs=None, as_paths=as_paths)
     else:
         # load the data from load_open_closed_dict
         open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=locd_savepath)
         # load the psd dataset
-        mjobs = max((os.cpu_count()-2)//n_jobs//4, 1) # jobs to use for multitaper
+        mjobs=1
+        # mjobs = max((os.cpu_count()-2)//n_jobs//4, 1) # jobs to use for multitaper
 
 
         # makes the multitaper dataset and returns the pathdict containing the paths to the saved files: {subj: {'first': /path/to/first, 'second': /path/to/second, 'avg': /path/to/avg}}
-        multitaper_dataset = make_multitaper_dataset(open_closed_dict, savepath, fmin=params['l_freq'], fmax=params['h_freq'], n_jobs=n_jobs, bandwidth=params['bandwidth'], normalization='full', verbose=False, pad=pad, mjobs=mjobs, save=save)
+        multitaper_dataset = make_multitaper_dataset(open_closed_dict, savepath, fmin=params['l_freq'], fmax=params['h_freq'], n_jobs=n_jobs, bandwidth=params['bandwidth'], normalization='full', verbose=False, interpolate_spectrum=interpolate_spectrum, freq_interp_method=freq_interp_method, mjobs=mjobs, save=save)
         with open(os.path.join(savepath, 'params.json'), 'w') as f:
             json.dump(params, f)
             print(f"Saved params to {os.path.join(savepath, 'params.json')}")
 
         subjs = [subj for subj in open_closed_dict.keys() if str(subj).isdigit()]
-        output_dict = {subj: {which_segment: multitaper_dataset[subj][which_segment]} for subj in subjs}
+        output_dict = {}
+        output_dict['subj_data'] = {subj: {which_segment: multitaper_dataset[subj][which_segment]} for subj in subjs}
+        output_dict['common_freqs'] = multitaper_dataset['common_freqs']
         output_dict['channels'] = multitaper_dataset['channels']
+        output_dict['params'] = params
+
+        if not as_paths:
+            for subj in subjs:
+                output_dict[subj][which_segment] = load_single_subject_transform_data(output_dict[subj][which_segment])
     return output_dict
 
-def process_segment(seg, segdict, channels=None, pad=False, max_time=None, fmin=0.3, fmax=None, mjobs=1, normalization='full', bandwidth=None, verbose=False):
+def process_segment(seg, segdict, channels=None, common_freqs=None, fmin=0.3, fmax=None, mjobs=1, normalization='full', bandwidth=None, verbose=False):
     """
     Returns a dictionary with the power, phase, psd, weights, freqs, and times for a given segment
     Output:
-        seg_result (dict): dictionary with keys 'power', 'spectrum', 'weights', 'freqs', 'times'
+        seg_result (dict): dictionary with keys 'power', 'spectrum', 'weights', 'basefreqs', 'times'
     """
-    seg_result = {'power': [], 'spectrum': [], 'weights': [], 'freqs':[], 'times': []}
+    seg_result = {'power': [], 'spectrum': [], 'weights': [], 'basefreqs':[], 'times': []}
 
-    for raw in segdict[seg]:
-        assert raw.ch_names == channels, f"Channels {raw.ch_names} don't match {channels}"
+    for raw_file in segdict[seg]:
+        raw = mne.io.read_raw_fif(raw_file, verbose=False).pick(channels)
+        assert du.isolate_eeg_channels(raw.ch_names) == channels, f"Channels {raw.ch_names} don't match {channels}"
         rawtime = raw.times
         eeg_arry = raw.get_data()
-        if pad:
-            eeg_arry = zero_pad_arrays(eeg_arry, max_time)
+
         # number of cpus available
 
         if fmax is None:
@@ -97,8 +106,10 @@ def process_segment(seg, segdict, channels=None, pad=False, max_time=None, fmin=
             cpsd, freqsc, weightsc = mne.time_frequency.psd_array_multitaper(eeg_arry, 500, fmin=fmin, fmax=fmax, output='complex', bandwidth=bandwidth, n_jobs=mjobs, normalization=normalization, verbose=verbose)
         power = _psd_from_mt(cpsd, weightsc)
         seg_result['spectrum'].append(cpsd)
+        if common_freqs is not None:
+            power = resample_psds(freqsc, power, common_freqs, min_freq=fmin, max_freq=fmax)
         seg_result['weights'].append(weightsc)
-        seg_result['freqs'].append(freqsc)
+        seg_result['basefreqs'].append(freqsc)
         seg_result['times'].append(rawtime)
         seg_result['power'].append(power)
 
@@ -106,7 +117,7 @@ def process_segment(seg, segdict, channels=None, pad=False, max_time=None, fmin=
         time.sleep(0)
     return seg_result
 
-def _process_single_subject(subj, statedict, states, basesavepath, pad=False, max_time=None, fmin=0.3, idx=None, n_subjs=None, mjobs=1, fmax=None, channels=None, normalization='full', bandwidth=None, save=True, verbose=False):
+def _process_single_subject(subj, statedict, states, basesavepath, interpolate_spectrum=1000, freq_interp_method='linear', fmin=0.3, idx=None, n_subjs=None, mjobs=1, fmax=None, channels=None, normalization='full', bandwidth=None, save=True, verbose=False):
        
     """
     Create multitaper psds for a single subject and save them to a file: {basesavepath}/{subj}/{segment}/open_closed_multitaper_psds_{subj}.npz
@@ -117,8 +128,8 @@ def _process_single_subject(subj, statedict, states, basesavepath, pad=False, ma
         print(f"Subject: {subj} ({idx}/{n_subjs})")
     starttime = time.time()
 
-
-    subj_result = {subj: {state: process_segment(state, statedict, channels=channels, pad=pad, max_time=max_time, fmin=fmin, mjobs=mjobs, fmax=fmax, normalization=normalization, bandwidth=bandwidth,  verbose=verbose) for state in states}}
+    common_freqs = make_interp_freqs(fmin, fmax, interpolate_spectrum, interp_method=freq_interp_method)
+    subj_result = {subj: {state: process_segment(state, statedict, common_freqs=common_freqs, channels=channels, fmin=fmin, mjobs=mjobs, fmax=fmax, normalization=normalization, bandwidth=bandwidth, verbose=verbose) for state in states}}
 
     print("Time to multitaper for subject {}: {}".format(subj, time.time()-starttime))
 
@@ -129,66 +140,68 @@ def _process_single_subject(subj, statedict, states, basesavepath, pad=False, ma
     savefilename = f"open_closed_multitaper_psds_{subj}.npz"
 
     subject_paths = {subj: {}}
+    savetime = time.time()
     for segment in ["first", "second", "avg"]:
         segmentsavepath = os.path.join(subj_savepath, segment)
         fullfilename = os.path.join(segmentsavepath, savefilename)
         # now save the psd_output using savez
         if save:
-            open_freqs = subj_result[subj]['open']['freqs'][0] if len(subj_result[subj]['open']['freqs']) > 0 else None
-            closed_freqs = subj_result[subj]['closed']['freqs'][0] if len(subj_result[subj]['closed']['freqs']) > 0 else None
-            if open_freqs is not None:
-                assert all([np.array_equal(open_freqs, freq) for freq in subj_result[subj]['open']['freqs']]), "Not all psds have the same frequencies"
-            if closed_freqs is not None:
-                assert all([np.array_equal(closed_freqs, freq) for freq in subj_result[subj]['closed']['freqs']]), "Not all psds have the same frequencies"
-
             if segment == "first":
                 open_power = subj_result[subj]['open']['power'][0] if len(subj_result[subj]['open']['power']) > 0 else None
                 closed_power = subj_result[subj]['closed']['power'][0] if len(subj_result[subj]['closed']['power']) > 0 else None
-                open_spectrum = subj_result[subj]['open']['cpsd'][0] if len(subj_result[subj]['open']['cpsd']) > 0 else None
-                closed_spectrum = subj_result[subj]['closed']['cpsd'][0] if len(subj_result[subj]['closed']['cpsd']) > 0 else None
+                open_spectrum = subj_result[subj]['open']['spectrum'][0] if len(subj_result[subj]['open']['spectrum']) > 0 else None
+                closed_spectrum = subj_result[subj]['closed']['spectrum'][0] if len(subj_result[subj]['closed']['spectrum']) > 0 else None
                 open_weights = subj_result[subj]['open']['weights'][0] if len(subj_result[subj]['open']['weights']) > 0 else None
                 closed_weights = subj_result[subj]['closed']['weights'][0] if len(subj_result[subj]['closed']['weights']) > 0 else None
-                open_spectrum = subj_result[subj]['open']['cpsd'][0] if len(subj_result[subj]['open']['cpsd']) > 0 else None
-                closed_spectrum = subj_result[subj]['closed']['cpsd'][0] if len(subj_result[subj]['closed']['cpsd']) > 0 else None
+                open_spectrum = subj_result[subj]['open']['spectrum'][0] if len(subj_result[subj]['open']['spectrum']) > 0 else None
+                closed_spectrum = subj_result[subj]['closed']['spectrum'][0] if len(subj_result[subj]['closed']['spectrum']) > 0 else None
+                open_basefreqs = subj_result[subj]['open']['basefreqs'][0] if len(subj_result[subj]['open']['basefreqs']) > 0 else None
+                closed_basefreqs = subj_result[subj]['closed']['basefreqs'][0] if len(subj_result[subj]['closed']['basefreqs']) > 0 else None
 
             elif segment == "second":
                 open_power = subj_result[subj]['open']['power'][1] if len(subj_result[subj]['open']['power']) > 1 else None
                 closed_power = subj_result[subj]['closed']['power'][1] if len(subj_result[subj]['closed']['power']) > 1 else None
-                open_spectrum = subj_result[subj]['open']['cpsd'][1] if len(subj_result[subj]['open']['cpsd']) > 1 else None
-                closed_spectrum = subj_result[subj]['closed']['cpsd'][1] if len(subj_result[subj]['closed']['cpsd']) > 1 else None
+                open_spectrum = subj_result[subj]['open']['spectrum'][1] if len(subj_result[subj]['open']['spectrum']) > 1 else None
+                closed_spectrum = subj_result[subj]['closed']['spectrum'][1] if len(subj_result[subj]['closed']['spectrum']) > 1 else None
                 open_weights = subj_result[subj]['open']['weights'][1] if len(subj_result[subj]['open']['weights']) > 1 else None
                 closed_weights = subj_result[subj]['closed']['weights'][1] if len(subj_result[subj]['closed']['weights']) > 1 else None
-                open_spectrum = subj_result[subj]['open']['cpsd'][1] if len(subj_result[subj]['open']['cpsd']) > 1 else None
-                closed_spectrum = subj_result[subj]['closed']['cpsd'][1] if len(subj_result[subj]['closed']['cpsd']) > 1 else None
-
+                open_spectrum = subj_result[subj]['open']['spectrum'][1] if len(subj_result[subj]['open']['spectrum']) > 1 else None
+                closed_spectrum = subj_result[subj]['closed']['spectrum'][1] if len(subj_result[subj]['closed']['spectrum']) > 1 else None
+                open_basefreqs = subj_result[subj]['open']['basefreqs'][1] if len(subj_result[subj]['open']['basefreqs']) > 1 else None
+                closed_basefreqs = subj_result[subj]['closed']['basefreqs'][1] if len(subj_result[subj]['closed']['basefreqs']) > 1 else None
             elif segment == "avg":
                 open_times = subj_result[subj]['open']['times']
                 closed_times = subj_result[subj]['closed']['times']
                 open_power = psd_from_disjoint_arrays(subj_result[subj]['open']['power'], open_times)
                 closed_power = psd_from_disjoint_arrays(subj_result[subj]['closed']['power'], closed_times)
-                open_spectrum = psd_from_disjoint_arrays(subj_result[subj]['open']['cpsd'], open_times)
-                closed_spectrum = psd_from_disjoint_arrays(subj_result[subj]['closed']['cpsd'], closed_times)
-                
+                open_spectrum = None
+                closed_spectrum = None
+                open_weights = None
+                closed_weights = None
+                open_basefreqs = None
+                closed_basefreqs = None
+            if not os.path.exists(segmentsavepath):
+                os.makedirs(segmentsavepath)
             np.savez_compressed(fullfilename,
                                 open_power = open_power,
                                 closed_power = closed_power,
-                                open_freqs = open_freqs,
-                                closed_freqs = closed_freqs,
                                 open_weights = open_weights,
                                 closed_weights = closed_weights,
                                 open_spectrum = open_spectrum,
                                 closed_spectrum = closed_spectrum,
-                                channels = channels)
+                                open_basefreqs = open_basefreqs,
+                                closed_basefreqs = closed_basefreqs)
 
             subject_paths[subj][segment] = fullfilename
         time.sleep(0)
+    print(f"Time to save subject {subj}: {time.time()-savetime}")
 
     
 
 
     return subject_paths, time.time()-starttime
 
-def make_multitaper_dataset(dataset, savepath, fmin=0.3, fmax=245, normalization='full', bandwidth=None, verbose=False, n_jobs=1, mjobs=1, pad=False, save=True):
+def make_multitaper_dataset(dataset, savepath, fmin=0.3, fmax=245, normalization='full', bandwidth=None, verbose=False, n_jobs=1, mjobs=1, interpolate_spectrum=1000, freq_interp_method='linear', save=True):
     """
     Input dataset in the form {subj: {'open': [], 'closed': []}}
     Returns a dataset in the form {subj: {'first': /path/to/first.npz, 'second': /path/to/second.npz, 'avg': /path/to/avg.npz}}
@@ -198,44 +211,37 @@ def make_multitaper_dataset(dataset, savepath, fmin=0.3, fmax=245, normalization
         fmin (float): minimum frequency to compute the multitaper
         fmax (float): maximum frequency to compute the multitaper
         normalization (str): normalization method for the multitaper
+        freq_interp_method (str): method for interpolating the frequencies ('linear', 'log', 'log10')
+        interpolate_spectrum (int): number of frequencies to interpolate to
         bandwidth (float): bandwidth for the multitaper
         verbose (bool): verbose output
         mjobs (int): number of jobs to use for individual multitaper
         n_jobs (int): number of jobs to use for parallelizing across subjects
-        pad (bool): whether to zero pad the data
     Returns:
         multitaper_dataset (dict): dictionary of the form {subj: {'first': /path/to/first.npz, 'second': /path/to/second.npz, 'avg': /path/to/avg.npz}}
 
     """
     states = ['open', 'closed']
     segments = ['first', 'second', 'avg']
+
+    subjs = list(dataset.keys())
+    subjs = [subj for subj in subjs if str(subj).isdigit()]
     assert all([state in states for state in dataset[list(dataset.keys())[0]].keys()]), "Inner keys must be 'open' or 'closed'"
-    channels = dataset[list(dataset.keys())[0]][states[0]][0].ch_names
-    assert all([channels == dataset[subj][state][0].ch_names for subj in subjs for state in states]), "Channels must be the same for all subjects"
+    eeg_channels = du.isolate_eeg_channels(mne.io.read_raw_fif(dataset[list(dataset.keys())[0]][states[0]][0], verbose=False).ch_names)
+    
+    assert all([eeg_channels == du.isolate_eeg_channels(mne.io.read_raw_fif(dataset[subj][state][0], verbose=False).ch_names) for subj in subjs for state in states]), "Channels must be the same for all subjects"
 
 
     multitaper_dataset = {subj: {seg: {} for seg in segments} for subj in dataset.keys()}
 
     tottime = time.time()
     process_times = []
-    max_times = []
-
-    # get the maximum time
-    for subj in dataset.keys():
-        for seg in segments:
-            segdict = dataset[subj][seg]
-            max_times.extend([len(raw.times) for raw in segdict])
-
-    max_time = np.max(max_times)
-
-    subjs = list(dataset.keys())
-    subjs = [subj for subj in subjs if str(subj).isdigit()]
 
     if verbose:
         print(f"Beginning multitaper for {len(subjs)} subjects")
     n_subjs = len(subjs)
 
-    parallel_results = Parallel(n_jobs=n_jobs)(delayed(_process_single_subject)(subj, dataset[subj], states, savepath, pad=pad, max_time=max_time, fmin=fmin, idx=idx, mjobs=mjobs, n_subjs=n_subjs, fmax=fmax, channels=channels, normalization=normalization, bandwidth=bandwidth, verbose=verbose, save=save) for idx, subj in enumerate(subjs))
+    parallel_results = Parallel(n_jobs=n_jobs)(delayed(_process_single_subject)(subj, dataset[subj], states, savepath, interpolate_spectrum=interpolate_spectrum, freq_interp_method=freq_interp_method, fmin=fmin, idx=idx, mjobs=mjobs, n_subjs=n_subjs, fmax=fmax, channels=eeg_channels, normalization=normalization, bandwidth=bandwidth, verbose=verbose, save=save) for idx, subj in enumerate(subjs))
 
     for idx, subj in enumerate(subjs):
         for seg in segments:
@@ -246,12 +252,13 @@ def make_multitaper_dataset(dataset, savepath, fmin=0.3, fmax=245, normalization
     print(f"Median time: {np.median(process_times)}, max time: {np.max(process_times)}, min time: {np.min(process_times)}")
 
     output_dict = multitaper_dataset
-    output_dict['channels'] = channels
+    output_dict['channels'] = eeg_channels
+    output_dict['common_freqs'] = make_interp_freqs(fmin, fmax, interpolate_spectrum, interp_method=freq_interp_method)
+    # save the channels and common_freqs to npy
+    np.save(os.path.join(savepath, 'channels.npy'), eeg_channels)
+    np.save(os.path.join(savepath, 'common_freqs.npy'), output_dict['common_freqs'])
+    
     return output_dict
-
-def zero_pad_arrays(eeg_array, max_time, time_axis=1):
-    zero_padded_raw_data = np.pad(eeg_array, ((0,0), (0, max_time-eeg_array.shape[time_axis])), 'constant', constant_values=0)
-    return zero_padded_raw_data
             
 def psd_from_disjoint_arrays(psds,times):
     """Compute a weighted average of the psd based on duration of original input
@@ -297,42 +304,119 @@ def _psd_from_mt(x_mt, weights):
     psd *= 2 / (weights * weights.conj()).real.sum(axis=-2)
     return psd
 
-def load_all_transform_data_paths(savepath, subjs=None, num_load_subjs=None, which_segment='avg'):
+def load_all_transform_data_paths(savepath, subjs=None, which_segment='avg', as_paths=True):
     """
     Given a savepath, return a dictionary of the form {subj: {which_segment: /path/to/first.npz}}
     """
-    inner_keys = ['open_power', 'closed_power', 'open_freqs', 'closed_freqs', 'open_phase', 'closed_phase', 'open_bispec', 'closed_bispec', 'open_weights', 'closed_weights', 'open_spectrum', 'closed_spectrum']
-    
+
     if subjs is None:
         # search for all the subdirs in the savepath
         subjs = os.listdir(savepath)
         # only keep the ones that are directories
         subjs = [subj for subj in subjs if os.path.isdir(os.path.join(savepath, subj))]
 
-    if num_load_subjs is not None:
-        subjs = np.random.choice(subjs, size=num_load_subjs, replace=False)
-
     multitaper_dataset = {subj: {} for subj in subjs}
     for subj in subjs:
         subj_savepath = os.path.join(savepath, subj, which_segment)
         savefilename = f"open_closed_multitaper_psds_{subj}.npz"
-        if os.path.exists(subj_savepath):
-            data = np.load(os.path.join(subj_savepath, savefilename), allow_pickle=True)
-            inner_dict = {}
-            for key in inner_keys:
-                inner_dict[key] = data[key]
-            multitaper_dataset[subj] = inner_dict
+        assert os.path.exists(subj_savepath), f"Path {subj_savepath} does not exist"
+        mt_fullpath = os.path.join(subj_savepath, savefilename)
+        multitaper_dataset[subj] = mt_fullpath
+
+        if not as_paths:
+            multitaper_dataset[subj] = load_single_subject_transform_data(mt_fullpath)
         else:
             print(f"Path {subj_savepath} does not exist")
     
     # add the params
+    output_dict = {}
+    output_dict['subj_data'] = multitaper_dataset
+    output_dict['channels'] = np.load(os.path.join(savepath, 'channels.npy'))
+    output_dict['common_freqs'] = np.load(os.path.join(savepath, 'common_freqs.npy'))
     params_jsonfile = os.path.join(savepath, 'params.json')
     if os.path.exists(params_jsonfile):
         with open(params_jsonfile, 'r') as f:
             params = json.load(f)
-            multitaper_dataset['params'] = params
+            output_dict['params'] = params
 
-    return multitaper_dataset
+    return output_dict
+
+
+def load_single_subject_transform_data(mt_fullpath):
+    """
+    Given a savepath, return a dictionary of the form {subj: {which_segment: /path/to/first.npz}}
+    """
+    inner_keys = ['open_power', 'closed_power', 'open_spectrum', 'closed_spectrum', 'open_weights', 'closed_weights', 'open_basefreqs', 'closed_basefreqs']
+
+    assert os.path.exists(mt_fullpath), f"Path {mt_fullpath} does not exist"
+    subj_data = {}
+  
+    data = np.load(mt_fullpath, allow_pickle=True)
+    for key in inner_keys:
+        subj_data[key] = data[key]
+    return subj_data
+
+
+
+def resample_psds(freqs, psd, common_freqs, min_freq=0.3, max_freq=250, num=1000):
+    """
+    Interpolates the PSDs to a common set of frequencies
+    Args:
+        freqs (np.array): array of frequencies
+        psd (np.array): array of PSDs
+        common_freqs (np.array): array of frequencies to interpolate to
+        min_freq (float): minimum frequency
+        max_freq (float): maximum frequency
+        num (int): number of frequencies to interpolate to
+    Returns:
+        resampled_psd (np.array): array of resampled PSDs    
+    """
+    resampled_func = scipy.interpolate.interp1d(freqs, psd, axis=1, kind='linear', bounds_error=False, fill_value='extrapolate')
+    resampled_psd = resampled_func(common_freqs)
+
+    return resampled_psd
+
+def make_interp_freqs(fmin, fmax, n_freqs, fs=500, interp_method='linear'):
+    """
+    Makes an array of frequencies to interpolate the PSDs to
+    Args:
+        fmin (float): minimum frequency
+        fmax (float): maximum frequency
+        n_freqs (int): number of frequencies to interpolate
+        fs (float): sampling frequency
+        interp_method (str): method for interpolation ('linear', 'log', 'log10')
+    Returns:
+        interp_freqs (np.array): array of interpolated frequencies
+    """
+    if fmax == None or fmax > fs/2:
+        fmax = fs/2
+    if interp_method == 'linear':
+        interp_freqs = np.linspace(fmin, fmax, n_freqs)
+    elif interp_method == 'log':
+        interp_freqs = np.logspace(np.log(0.2), np.log(600), n_freqs*2, base=np.exp(1))
+        interp_freqs = np.unique(interp_freqs)  
+        interp_freqs = interp_freqs[interp_freqs <= fmax]
+        interp_freqs = interp_freqs[interp_freqs >= fmin]
+        # make sure the fmax is included
+        interp_freqs = np.concatenate((interp_freqs, [fmax]))
+        interp_freqs = np.concatenate(([fmin], interp_freqs))
+        interp_freqs = np.unique(interp_freqs)
+    elif interp_method == 'log10':
+        interp_freqs = np.logspace(np.log10(0.2), np.log10(600), n_freqs*2)
+        interp_freqs = np.unique(interp_freqs)  
+        interp_freqs = interp_freqs[interp_freqs <= fmax]
+        interp_freqs = interp_freqs[interp_freqs >= fmin]
+        # make sure the fmax is included
+        interp_freqs = np.concatenate((interp_freqs, [fmax]))
+        interp_freqs = np.concatenate(([fmin], interp_freqs))
+        interp_freqs = np.unique(interp_freqs)
+    else:
+        raise ValueError("interp_method must be 'linear', 'log', or 'log10'")
+    
+    assert interp_freqs[0] >= fmin, f"Interpolated frequencies must start at {fmin}, but got {interp_freqs[0]}"
+    assert interp_freqs[-1] <= fmax, f"Interpolated frequencies must end at {fmax}, but got {interp_freqs[-1]}"
+    return interp_freqs
+
 
 def extract_locd_params(**kwargs):
     
@@ -367,7 +451,7 @@ if __name__=='__main__':
     parser.add_argument('--order', type=int, default=6)
     parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
     parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
-    parser.add_argument('--num_subjs', type=int, default=151)
+    parser.add_argument('--num_subjs', type=int, default=3)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--method', type=str, default='CSD')
     parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
@@ -382,12 +466,14 @@ if __name__=='__main__':
     parser.add_argument('--include_ecg', action=argparse.BooleanOptionalAction, default=True)
 
     ## PSD PARAMS
-    parser.add_argument('--pad', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--interpolate_spectrum', type=int, default=1000)
+    parser.add_argument('--freq_interp_method', type=str, default='linear', choices=['linear', 'log', 'log10'])
     parser.add_argument('--which_segment', type=str, default='avg', choices=['first', 'second', 'avg'], help='Which segment to use for the multitaper')
     parser.add_argument('--bandwidth', type=float, default=1)
 
     parser.add_argument('--n_jobs', type=int, default=1)
     parser.add_argument('--save', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--as_paths', action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
     params = vars(args)
     locd_params = extract_locd_params(**params)
@@ -396,7 +482,7 @@ if __name__=='__main__':
     pprint.pprint(params)
     response = input("Continue? (y/n)")
     if response == 'y':
-        td_dict = main(locd_params=locd_params, pad=params['pad'], bandwidth=params['bandwidth'], which_segment=params['which_segment'], n_jobs=params['n_jobs'], save=params['save'])
+        td_dict = main(locd_params=locd_params, interpolate_spectrum=params['interpolate_spectrum'], freq_interp_method=params['freq_interp_method'], bandwidth=params['bandwidth'], which_segment=params['which_segment'], n_jobs=params['n_jobs'], save=params['save'])
         print(td_dict.keys())
     else:
         print("exiting...")

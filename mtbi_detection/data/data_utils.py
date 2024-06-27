@@ -496,7 +496,7 @@ def only_log_if(df, all_log_conditions=[lambda x: x < 1e-2], any_log_conditions=
         return log_df
     
 
-def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename='params.json', make_new_paramdir=True, save_early=True, skip_ui=False):
+def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename='params.json', make_new_paramdir=True, save_early=False, skip_ui=False):
     """
     Given a savepath and a dictionary of params, check if there is a matching params file in the savepath. If there is, then set the savepath to the directory of the params file. If there is not, then create a new directory in the savepath/params directory and set the savepath to that directory.
     Inputs:
@@ -746,6 +746,13 @@ def sorted_cluster_labeling(data, column, n_clusters=7, random_state=0):
     kmeans_df['Cluster'] = kmeans_df['Cluster'].map(new_map)
 
     return kmeans_df
+
+def isolate_eeg_channels(channels: list):
+    """
+    Given a list of channels, isolate the EEG channels
+    """
+    eeg_channels = [channel for channel in channels if all([not val in channel.upper() for val in ['X', 'EKG', 'ECG']])]
+    return eeg_channels
 
 
 if __name__ == '__main__':

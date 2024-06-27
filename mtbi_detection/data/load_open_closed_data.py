@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 
-def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, base_folder='data/tables/'):
+def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, tables_folder='data/tables/'):
     """
     Given parameters, load the open closed data for all subjects
     Output:
@@ -96,13 +96,13 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         print(f"Found matching params file: {try_savepath}")
         savepath = try_savepath
     if found_match:
-        pathdict = load_all_reref_pathdata(savepath, num_load_subjs=num_load_subjs, random_load=random_load, base_folder=base_folder, remove_ecg=remove_ecg)
+        pathdict = load_all_reref_pathdata(savepath, num_load_subjs=num_load_subjs, random_load=random_load, remove_ecg=remove_ecg)
     else:
         starttime = time.time()
         print("Loading raw data...")
         dataset = ld.load_subjects_data(datapath=datapath, subjects=None, timepoint='baseline', recording_type='raw', preload=True, verbose=False)
         print(f"Finished loading raw data in {time.time()-starttime} seconds")
-        annotations = ld.load_annotations(num_rows=num_subjs, base_folder=base_folder) 
+        annotations = ld.load_annotations(num_rows=num_subjs, tables_folder=tables_folder) 
 
         subjects = annotations['Study ID'].unique().astype(int)
 
@@ -118,7 +118,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         bandpass_dataset = load_bandpass_filtered_open_closed_dict(dataset, good_subjs, l_freq=l_freq, h_freq=h_freq, fs_baseline=fs_baseline, order=order, verbose=verbose, notches=notches, notch_width=notch_width)
         
         print("Removing ECG Artifacts")
-        ecg_locations = ld.get_ecg_channel_locations(subjs=good_subjs, base_folder=base_folder)
+        ecg_locations = ld.get_ecg_channel_locations(subjs=good_subjs, tables_folder=tables_folder)
         ecg_channels_dict = {subj: ecg_locations[sdx] for sdx, subj in enumerate(good_subjs)}
         if filter_ecg:
             ecg_free_dataset = load_ecg_free_open_closed_dict(bandpass_dataset, good_subjs, ecg_channels=ecg_locations, verbose=verbose)
@@ -355,7 +355,7 @@ def load_open_closed_crops(dataset, verbose=False, annotations=None, fs_baseline
         print(f"Min time to crop: {np.min(times)}, Max time to crop: {np.max(times)}")
     return open_closed_dataset
 
-def load_all_reref_pathdata(savepath, subjs=None, num_load_subjs=None, random_load=False, base_folder='data/tables/', remove_ecg=False):
+def load_all_reref_pathdata(savepath, subjs=None, num_load_subjs=None, random_load=False, remove_ecg=False):
     """
     Load from directory into dict of the structure:
     {subj: {'open': [raws], 'closed': [raws]}}
@@ -367,7 +367,6 @@ def load_all_reref_pathdata(savepath, subjs=None, num_load_subjs=None, random_lo
         # search for all the subdirs in the savepath
         subjs = os.listdir(savepath)
         subjs = [subj for subj in subjs if subj.isdigit()]
-    annotations = ld.load_annotations(base_folder=base_folder)
 
     if num_load_subjs is not None:
         if random_load:
@@ -385,7 +384,6 @@ def load_all_reref_pathdata(savepath, subjs=None, num_load_subjs=None, random_lo
             fif_files = glob.glob(os.path.join(state_intermediate_savepath, '*.fif'))
             for fif_file in fif_files:
                 data_dict[subj][inner_key.split('_')[0]].append(fif_file)
-    print("REMOVE ECG?? ", remove_ecg)
     if remove_ecg:
         data_dict['remove_ecg'] = remove_ecg
     return data_dict
