@@ -12,10 +12,9 @@ import mtbi_detection.data.load_open_closed_data as locd
 import mtbi_detection.data.transform_data as td
 
 import mtbi_detection.features.compute_psd_features as cpf
-# import src.features.compute_regional_psd_features as crpf
-# import src.features.compute_all_bin_method_psd_features as cabmpf
+import mtbi_detection.features.compute_maximal_power_features as cmpf
 # import src.features.feature_utils as fu
-# import src.features.compute_maximal_power_features as cmpf
+
 # import src.features.compute_spectral_edge_features as csef
 # import src.features.compute_complexity_features as ccf
 # import src.features.compute_complexity_features_from_psd as ccfp
@@ -94,58 +93,15 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     band_ratios = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=True, channels=channels, state='all', save=True, featurepath=featurepath, **psd_params)
     print(f"Finished computing PSD features in {time.time()-psdtime} seconds, band_powers shape: {band_powers.shape}, band_ratios shape: {band_ratios.shape}")
 
-    # # regional psd features
-    # if use_regional:
-    #     print("Computing regional PSD features")
-    #     rpsdtime = time.time()
-    #     regional_psd_path = os.path.join(newsavepath, 'regional_psd_features')
-    #     if not os.path.exists(regional_psd_path):
-    #         os.mkdir(regional_psd_path)
-    #     regional_psd_params = extract_regional_power_params(**kwargs)
-    #     new_regional_psd_path, _ = du.check_and_make_params_folder(regional_psd_path, regional_psd_params, paramfilename = 'regional_psd_params.json', make_new_paramdir=True, save_early=False, skip_ui=True)
-    #     regional_psd_dfs = []
-    #     if kwargs['regional_bin_method'][0].lower() == 'all':
-    #         regional_bin_method = ['avg', 'sum', 'max', 'min', 'std', 'var', 'median', 'skew', 'iqr', 'p5', 'p25', 'p75', 'p95']
-    #     else:
-    #         regional_bin_method = kwargs['regional_bin_method']
-    #     for idx, regional_bin_method in enumerate(regional_bin_method):
-    #         regional_method = (regional_psd_params['band_method'], regional_psd_params['n_divisions'], regional_psd_params['log_division'], regional_bin_method)
-    #         if f'{regional_method[0]}{regional_method[1]}_{regional_method[-1]}_regional_psd_bin_features.csv' in os.listdir(new_regional_psd_path):
-    #             print(f"Found {regional_bin_method} regional_psd_bin_features.csv, loading...")
-    #             regional_ratio_psd_df = pd.read_csv(os.path.join(new_regional_psd_path, f'{regional_method[0]}{regional_method[1]}_{regional_method[-1]}_regional_psd_bin_features.csv'), index_col=0)
-    #         else:
-    #             print(f"Computing regional PSD features for {regional_bin_method}")
-    #             regional_ratio_psd_df = crpf.save_merged_regional_dfs(transform_data_dict, band_method=regional_method[0], bin_method=regional_method[3],n_division=regional_method[1], log_division=regional_method[2], n_subjs=regional_psd_params['n_subjs'], channels=channels, savedir=new_regional_psd_path, save=False)
-    #             if kwargs['save']:
-    #                 regional_ratio_psd_df.to_csv(os.path.join(new_regional_psd_path, f'{regional_method[0]}{regional_method[1]}_{regional_method[-1]}_regional_psd_bin_features.csv'))
-    #                 if idx == 0:
-    #                     with open(os.path.join(new_regional_psd_path, 'regional_psd_params.json'), 'w') as f:
-    #                         json.dump(regional_psd_params, f)
-    #         regional_psd_dfs.append(regional_ratio_psd_df)
-        
-    #     merged_regional_psd_df = pd.concat(regional_psd_dfs, axis=1)
-    #     print(f"Finished computing regional PSD features in {time.time()-rpsdtime} seconds")
-    # else:
-    #     merged_regional_psd_df = None
-    # # psd other features
-    # print("Computing other PSD features")
-    # other_psd_params = {'power_increments': kwargs['power_increments'], 'num_powers': kwargs['num_powers']}
-    # other_psd_path = os.path.join(newsavepath, 'other_psd_features')
-    # if not os.path.exists(other_psd_path):
-    #     os.mkdir(other_psd_path)
-    # new_other_psd_path, _ = du.check_and_make_params_folder(other_psd_path, other_psd_params, paramfilename = 'other_psd_params.json', make_new_paramdir=True, save_early=False, skip_ui=True)
-    # # maximal power
-    # if 'maximal_power_df.csv' in os.listdir(new_other_psd_path):
-    #     print("Found maximal_power_df.csv, loading...")
-    #     maximal_power_df = pd.read_csv(os.path.join(new_other_psd_path, 'maximal_power_df.csv'), index_col=0)
-    # else:
-    #     maximal_power_df = cmpf.main(transform_dict=transform_data_dict, channels=channels, save=kwargs['save'], power_increment=kwargs['power_increments'], num_powers=kwargs['num_powers'], savepath=new_other_psd_path)
-    #     if kwargs['save']:
-    #         maximal_power_df.to_csv(os.path.join(new_other_psd_path, 'maximal_power_df.csv'))
-    #         with open(os.path.join(new_other_psd_path, 'other_psd_params.json'), 'w') as f:
-    #             json.dump(other_psd_params, f)
-    # # sef features
-    # print("Computing spectral edge features")
+    # maximal power features
+    print("Computing Maximal Power PSD features")
+    maximtime = time.time()
+    maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method']}
+    maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, **maximal_power_params)
+    print(f"Finished computing maximal power features in {time.time()-maximtime} seconds, df shape: {maximal_power_df.shape}")
+
+    # sef features
+    print("Computing spectral edge features")
 
     # # sef_params = None
     # if 'all_spectral_edge_features.csv' in os.listdir(newsavepath):
@@ -504,8 +460,9 @@ if __name__ == '__main__':
     parser.add_argument('--use_regional', action=argparse.BooleanOptionalAction, default=False, help="Whether to use regional PSD features")
     
     ## other psd params
-    parser.add_argument('--power_increments', type=float, default=None, help="The increments to find the maximal power in the psd")
+    parser.add_argument('--power_increment', type=float, default=None, help="The increments to find the maximal power in the psd")
     parser.add_argument('--num_powers', type=int, default=20, help="The number of maximal powers to find in the psd")
+    parser.add_argument('--percentile_edge_method', type=str, default='custom', choices=['custom', 'automated'], help="The method to find the spectral edge")
     ## complexity params
     parser.add_argument('--window_len', type=int, default=10, help="The window length for the complexity features")
     parser.add_argument('--overlap', type=float, default=1, help="The overlap for the complexity features")

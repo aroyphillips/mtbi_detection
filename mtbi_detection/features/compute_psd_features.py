@@ -118,7 +118,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
             # now we flatten the (n_subjs, n_channels, n_bins) array to (n_subs, n_channels * n_bins)
             flat_binned_psds = [binned_psd.reshape(binned_psd.shape[0], -1) for binned_psd in all_binned_psds]
             concat_flat_binned_psds = np.concatenate(flat_binned_psds, axis=-1)
-            flat_feature_cols_bins = [[f'{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_bin_feature_cols]
+            flat_feature_cols_bins = [[f'powerbin_{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_bin_feature_cols]
             concat_flat_feature_cols_bins = [feature for feature_cols in flat_feature_cols_bins for feature in feature_cols]
             
             assert all([flat_binned_psd[:, 0] == binned_psd[:, 0, 0] for flat_binned_psd, binned_psd in zip(flat_binned_psds, all_binned_psds)])
@@ -128,7 +128,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
             if ratio:
                 flat_ratios = [ratios.reshape(ratios.shape[0], -1) for ratios in all_ratios]
                 concat_flat_ratios = np.concatenate(flat_ratios, axis=-1)
-                flat_feature_cols_ratios = [[f'{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_ratio_feature_cols]
+                flat_feature_cols_ratios = [[f'powerratio_{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_ratio_feature_cols]
                 concat_flat_feature_cols_ratios = [feature for feature_cols in flat_feature_cols_ratios for feature in feature_cols]
                 assert all([flat_ratio[:, 0] == ratio[:, 0, 0] for flat_ratio, ratio in zip(flat_ratios, all_ratios)])
                 assert all([flat_ratio[:, 3] == ratio[:, 0, 3] for flat_ratio, ratio in zip(flat_ratios, all_ratios)])
@@ -160,7 +160,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
 
             flat_binned_psds = [binned_psd.reshape(binned_psd.shape[0], -1) for binned_psd in all_binned_psds]
             concat_flat_binned_psds = np.concatenate(flat_binned_psds, axis=-1)
-            flat_feature_cols_bins = [[f'{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_bin_feature_cols]
+            flat_feature_cols_bins = [[f'powerbin_{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_bin_feature_cols]
             concat_flat_feature_cols_bins = [feature for feature_cols in flat_feature_cols_bins for feature in feature_cols]
             assert all([np.all(flat_binned_psd[:, 0] == binned_psd[:, 0, 0]) for flat_binned_psd, binned_psd in zip(flat_binned_psds, all_binned_psds)])
             assert all([np.all(flat_binned_psd[:, 3] == binned_psd[:, 0, 3]) for flat_binned_psd, binned_psd in zip(flat_binned_psds, all_binned_psds)])
@@ -169,7 +169,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
             if ratio:
                 flat_ratios = [ratios.reshape(ratios.shape[0], -1) for ratios in all_ratios]
                 concat_flat_ratios = np.concatenate(flat_ratios, axis=-1)
-                flat_feature_cols_ratios = [[f'{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_ratio_feature_cols]
+                flat_feature_cols_ratios = [[f'powerratio_{ch}_{feature}' for ch in channels for feature in feature_cols] for feature_cols in all_ratio_feature_cols]
                 concat_flat_feature_cols_ratios = [feature for feature_cols in flat_feature_cols_ratios for feature in feature_cols]
                 assert all([np.allclose(flat_ratio[:, 0], ratio[:, 0, 0], equal_nan=True) for flat_ratio, ratio in zip(flat_ratios, all_ratios)])
                 assert all([np.allclose(flat_ratio[:, 3], ratio[:, 0, 3], equal_nan=True) for flat_ratio, ratio in zip(flat_ratios, all_ratios)])
