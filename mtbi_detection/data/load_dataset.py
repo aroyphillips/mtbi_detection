@@ -471,7 +471,7 @@ def make_subset_from_col(df, subj_col, val_col, col_pos_opts, condition_col=None
         print(f"Number of subjects with {key}: {len(val)}")
     return val_list_dict 
 
-def load_splits(base_folder='data/internal/'):
+def load_splits(internal_folder='data/internal/'):
     """
     Loads the train, val, dev, holdout subjs from base_folder and returns as dictionary
     Args:
@@ -480,10 +480,10 @@ def load_splits(base_folder='data/internal/'):
         splits: dictionary containing the train, val, dev, holdout subjs
 
     """
-    train_subjs = np.load(os.path.join(base_folder, 'train_subjs.npy'))
-    ival_subjs = np.load(os.path.join(base_folder, 'ival_subjs.npy')) # internal validation
-    holdout_subjs = np.load(os.path.join(base_folder, 'holdout_subjs.npy'))
-    dev_subjs = np.load(os.path.join(base_folder, 'dev_subjs.npy'))
+    train_subjs = np.load(os.path.join(internal_folder, 'train_subjs.npy'))
+    ival_subjs = np.load(os.path.join(internal_folder, 'ival_subjs.npy')) # internal validation
+    holdout_subjs = np.load(os.path.join(internal_folder, 'holdout_subjs.npy'))
+    dev_subjs = np.load(os.path.join(internal_folder, 'dev_subjs.npy'))
     skip_subjs = [7,9, 33, 47, 54]
     train_subjs = [subj for subj in train_subjs if int(subj) not in skip_subjs]
     ival_subjs = [subj for subj in ival_subjs if int(subj) not in skip_subjs]
