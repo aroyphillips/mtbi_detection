@@ -1,23 +1,19 @@
 import pandas as pd
 import numpy as np
-import networkx as nx
-# import bct
 import mne
 import time
 import sklearn
 
 import scipy
-from scipy.stats import pearsonr, spearmanr, kendalltau
-from sklearn.metrics import mutual_info_score
+from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
 
 from numpy.typing import NDArray
 from typing import Dict, List, Tuple
 from pandas.core.frame import DataFrame
 
-import src.data.load_dataset as ld
-import copy
-import src.outside_code.gradiompy_integrate as gp_integrate
+import mtbi_detection.data.load_dataset as ld
+import mtbi_detection.features.gradiompy_integrate as gp_integrate
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz','T1','T2','T3','T4','T5','T6']
 LABEL_DICT = ld.load_label_dict()
 
@@ -714,15 +710,19 @@ def bin_psd_by_bands(psd, freqs, bands, method='avg', verbosity=2):
     
     return binned_psd
 
-def make_bands(basis='standard', divisions=2, log_division=False, custom_bands=None, fs=500, verbosity=1, min_freq=0.3):
+def make_bands(basis='custom', divisions=1, log_division=False, custom_bands=None, fs=500, verbosity=1, min_freq=0.3):
+    """
+    Given a string to specify the bands to use, return a list of tuples of the bands
+
+    
+    """
+    
     basis = str(basis)
-    if basis == 'anton':
-        bands = [(0.3, 4), (4, 8.5), (8.5, 12), (12, 36), (36, 45), (45, fs//2)]
-    elif basis == 'standard':
+    if basis == 'standard':
         bands =  [(0.3, 1.5), (1.5, 4), (4, 8), (8, 12), (12, 30), (30, 70), (70, 150), (150, fs//2)]
-    elif basis == 'buzsaki':
+    elif basis == 'log-standard':
         bands = [(1/5, 1/2), (1/2, 1/0.7), (1.5, 4), (4, 10), (10, 30), (30, 80), (80, 200), (200, 600)]# from https://www.science.org/doi/pdf/10.1126/science.1099745
-    elif basis=='mine':
+    elif basis=='custom':
         bands = [(0.3, 1.5), (1.5, 4), (4, 8), (8, 12.5), (12.5, 25), (25, 36), (36, 45), (45, 70), (70, 150), (150, 250)]
     elif 'linear' in basis:
         if len(basis.split('_'))  > 1:
@@ -888,60 +888,6 @@ def find_static_columns(df, num_unique_min=1):
     """
     static_columns = df.columns[df.nunique() < num_unique_min].tolist()
     return static_columns
-
-
-### graph features
-def get_graph_weighted_metrics(connectivity_matrix: NDArray, channels: List = CHANNELS) -> Tuple[List, List]:
-    # reference: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7597206/
-    # reference: https://www.biorxiv.org/content/10.1101/2021.02.15.431255v1.full.pdf
-    # reference: https://ieeexplore.ieee.org/mediastore_new/IEEE/content/media/6287639/8948470/9174714/ismai.t3-3018995-large.gif
-    # bct reference: https://github.com/CarloNicolini/pyconnectivity/blob/master/bct.py
-
-    # Construct Graph
-    assert connectivity_matrix.shape[0] == connectivity_matrix.shape[1] == len(channels)
-    np.fill_diagonal(connectivity_matrix, 0)
-    graph = nx.from_numpy_array(connectivity_matrix, create_using=nx.Graph)
-    
-    
-    mapping = {i: k for i, k in enumerate(channels)}
-    graph = nx.relabel_nodes(graph, mapping)
-    graph_distance_dict = {(e1, e2): 1 / abs(weight) for e1, e2, weight in graph.edges(data='weight')}
-    nx.set_edge_attributes(graph, values=graph_distance_dict, name='distance')
-
-    # Node features
-    degree_centrality = [graph.degree(weight='weight')[ch] for ch in channels]
-
-    try:
-        eigen_centrality = [nx.eigenvector_centrality(graph, max_iter=1000, weight="weight")[ch] for ch in channels]
-    except:
-        print("Error with eigen_centrality")
-        eigen_centrality = [0] * len(channels)
-    closeness_centrality = [nx.closeness_centrality(graph, distance='distance')[ch] for ch in channels]
-    betweenness_centrality = [nx.betweenness_centrality(graph, weight='distance', normalized=True)[ch] for ch in channels]
-    try:
-        pagerank = [nx.pagerank(graph, weight="weight", max_iter=1000)[ch] for ch in channels]
-    except:
-        # print("Error with pagerank")
-        pagerank = [0] * len(channels)
-
-    # Graph features
-    average_clustering = [nx.average_clustering(graph, weight="weight")]
-    shortest_path_length = [nx.average_shortest_path_length(graph, weight="distance")]
-    efficiency = [bct.efficiency_wei(connectivity_matrix, local=False)]
-    number_partitions = [len(list(nx.algorithms.community.louvain_partitions(graph, weight="weight"))[0])]
-
-    # Combine all features and names
-    all_features = degree_centrality + eigen_centrality + closeness_centrality + betweenness_centrality + pagerank + shortest_path_length + \
-        average_clustering + efficiency + number_partitions
-    all_feature_names = []
-    feature_names = ["degree centrality", "eigen centrality", "closeness centrality", "betweenness centrality", "page rank"]
-    for feature in feature_names:
-        for channel in channels:
-            all_feature_names.append(channel + " " + feature)
-    all_feature_names = all_feature_names + ["shortest path length", "average clustering", "global efficiency", "number of partitions"]
-    assert len(all_features) == len(all_feature_names)
-    return all_features, all_feature_names
-
 
 def add_uncorrelated_features(top_features, correlated_pairs, threshold=0.1):
     """

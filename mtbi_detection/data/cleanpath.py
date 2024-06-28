@@ -19,14 +19,13 @@ def cleanpath(path, foldername='params'):
             if ui == 'y':
                 shutil.rmtree(os.path.join(path, folder))
 
-
+    folders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
     # remove all folders that do not contain a params.json file
     for folder in folders:
         if 'params.json' not in os.listdir(os.path.join(path, folder)):
             ui = input(f'Remove folder since it has no params.json: {os.path.join(path, folder)}? (y/n)')
             if ui == 'y':
                 shutil.rmtree(os.path.join(path, folder))
-
 
     # rename the remaining folders
     folders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]

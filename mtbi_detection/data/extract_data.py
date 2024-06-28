@@ -214,14 +214,14 @@ def test_logs(all_logs):
                 print("passed")
     return logs
 
-def get_info_df(name, csv_files, load_csvs, datafiles):
+def get_info_df(name, csv_files, datafiles):
     """
     given a short name (same capitilization) returns the dataframe of the info
     
     """
     targ_idx = csv_files.index([i for i in datafiles if name in i][0]) #changed from 1 to 0
-    targ_df =  load_csvs[targ_idx]
-    return targ_df, targ_idx
+    # targ_df =  load_csvs[targ_idx]
+    return targ_idx
 
 # helper functions
 def endswith_test(string, str_type='EEG'):
@@ -338,10 +338,10 @@ def check_labels(label_df, datapath):
     # finds all the csv files
     csv_files = [file for file in datafiles if file.endswith('csv')]
     # load the csv files
-    load_csvs = [pd.read_csv(datapath+f) for f in csv_files]
 
     # gets the list of RecordRawDataFiles
-    eeg_df, eeg_idx = get_info_df("EEG", csv_files, load_csvs, datafiles)
+    eeg_idx = get_info_df("EEG", csv_files, datafiles)
+    eeg_df = pd.read_csv(os.path.join(datapath, csv_files[eeg_idx]))
 
     subjs = eeg_df['EEG_FITBIR.Main.SubjectIDNum']
     labels = eeg_df['EEG_FITBIR.Main.CaseContrlInd']
