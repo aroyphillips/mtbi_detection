@@ -150,7 +150,7 @@ def create_label_dict(label_file_df, label_col, subj_col):
         label_dict[label_file_df.iloc[i, label_file_df.columns.get_loc(subj_col)]] = label_val
     return label_dict
 
-def load_label_dict(label_col='EEG_FITBIR.Main.CaseContrlInd', subj_col='EEG_FITBIR.Main.SubjectIDNum', sort=False):
+def load_label_dict(label_col='CaseContrlInd', subj_col='SubjectIDNum', sort=False):
     """
     Given a csv file containing labels and subject ids
     Inputs:

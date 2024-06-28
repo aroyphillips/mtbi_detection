@@ -47,7 +47,7 @@ def main(locd_params = {
         temp = locd_savepath[:-1]
     else:
         temp = locd_savepath
-    savepath = os.path.join(os.path.dirname(temp), 'data_transforms')
+    savepath = os.path.join(os.path.dirname(temp), 'psd_transform')
     savepath = du.check_savepath(savepath)
     du.clean_params_path(savepath)
 
@@ -107,7 +107,7 @@ def process_segment(seg, segdict, channels=None, common_freqs=None, fmin=0.3, fm
         power = _psd_from_mt(cpsd, weightsc)
         seg_result['spectrum'].append(cpsd)
         if common_freqs is not None:
-            power = resample_psds(freqsc, power, common_freqs, min_freq=fmin, max_freq=fmax)
+            power = resample_psds(freqsc, power, common_freqs)
         seg_result['weights'].append(weightsc)
         seg_result['basefreqs'].append(freqsc)
         seg_result['times'].append(rawtime)
@@ -304,30 +304,36 @@ def _psd_from_mt(x_mt, weights):
     psd *= 2 / (weights * weights.conj()).real.sum(axis=-2)
     return psd
 
-def load_all_transform_data_paths(savepath, subjs=None, which_segment='avg', as_paths=True):
+def load_all_transform_data_paths(savepath, subjs=None, which_segment='avg', as_paths=True, unravel=False):
     """
     Given a savepath, return a dictionary of the form {subj: {which_segment: /path/to/first.npz}}
     """
-
+    if type(which_segment) == str:
+        which_segment = [which_segment]
+    elif type(which_segment) == list:
+        assert all([seg in ['first', 'second', 'avg'] for seg in which_segment]), "Segments must be 'first', 'second', or 'avg'"
+    else:
+        raise ValueError(f"which_segment must be a string or a list of strings but got {which_segment}")
+    
     if subjs is None:
         # search for all the subdirs in the savepath
         subjs = os.listdir(savepath)
         # only keep the ones that are directories
         subjs = [subj for subj in subjs if os.path.isdir(os.path.join(savepath, subj))]
 
-    multitaper_dataset = {subj: {} for subj in subjs}
+    multitaper_dataset = {subj: {seg: {}} for subj in subjs for seg in which_segment}
     for subj in subjs:
-        subj_savepath = os.path.join(savepath, subj, which_segment)
-        savefilename = f"open_closed_multitaper_psds_{subj}.npz"
-        assert os.path.exists(subj_savepath), f"Path {subj_savepath} does not exist"
-        mt_fullpath = os.path.join(subj_savepath, savefilename)
-        multitaper_dataset[subj] = mt_fullpath
+        for seg in which_segment:
+            subj_savepath = os.path.join(savepath, subj, seg)
+            savefilename = f"open_closed_multitaper_psds_{subj}.npz"
+            assert os.path.exists(subj_savepath), f"Path {subj_savepath} does not exist"
+            mt_fullpath = os.path.join(subj_savepath, savefilename)
+            multitaper_dataset[subj][seg] = mt_fullpath
 
-        if not as_paths:
-            multitaper_dataset[subj] = load_single_subject_transform_data(mt_fullpath)
-        else:
-            print(f"Path {subj_savepath} does not exist")
-    
+            if not as_paths:
+                multitaper_dataset[subj][seg] = load_single_subject_transform_data(mt_fullpath)
+        
+    multitaper_dataset = unravel_multitaper_dataset(multitaper_dataset, which_segment=which_segment) if unravel else multitaper_dataset
     # add the params
     output_dict = {}
     output_dict['subj_data'] = multitaper_dataset
@@ -344,7 +350,10 @@ def load_all_transform_data_paths(savepath, subjs=None, which_segment='avg', as_
 
 def load_single_subject_transform_data(mt_fullpath):
     """
-    Given a savepath, return a dictionary of the form {subj: {which_segment: /path/to/first.npz}}
+    Given a savepath, return a dictionary of the form 
+    {subj: {open_power: _, closed_power: _, open_spectrum: _, closed_spectrum: _, open_weights: _, closed_weights: _, open_basefreqs: _, closed_basefreqs: _}}}
+    OR 
+    {open_power: _, closed_power: _, open_spectrum: _, closed_spectrum: _, open_weights: _, closed_weights: _, open_basefreqs: _, closed_basefreqs: _}
     """
     inner_keys = ['open_power', 'closed_power', 'open_spectrum', 'closed_spectrum', 'open_weights', 'closed_weights', 'open_basefreqs', 'closed_basefreqs']
 
@@ -357,8 +366,35 @@ def load_single_subject_transform_data(mt_fullpath):
     return subj_data
 
 
+def unravel_multitaper_dataset(multitaper_dataset, which_segment='avg'):
+    """
+    Given a dataset of the form:
+    {subj: {which_segment: {}}
+    return a dataset of the form:
+    {'open_power': [], 'closed_power': [], 'open_subjs': [], 'closed_subjs': []}
+    """
+    if type(which_segment) == str:
+        which_segment = [which_segment]
+    elif type(which_segment) == list:
+        assert all([seg in ['first', 'second', 'avg'] for seg in which_segment]), "Segments must be 'first', 'second', or 'avg'"
+    else:
+        raise ValueError(f"which_segment must be a string or a list of strings but got {which_segment}")
+    
+    assert all([key.isdigit() for key in multitaper_dataset.keys()]), "Keys must be subject numbers"
+    subjs = list(multitaper_dataset.keys())
+    if type(multitaper_dataset[subjs[0]][which_segment[0]]) == str:
+        multitaper_dataset = {subj: {seg: load_single_subject_transform_data(multitaper_dataset[subj][seg])} for subj in subjs for seg in which_segment}
+    output_dict = {seg:{'open_power': [], 'closed_power': [], 'open_subjs': [], 'closed_subjs': []} for seg in which_segment}
+    for seg in which_segment:
+        for subj in subjs:
+            output_dict[seg]['open_power'].append(multitaper_dataset[subj][seg]['open_power'])
+            output_dict[seg]['closed_power'].append(multitaper_dataset[subj][seg]['closed_power'])
+            output_dict[seg]['open_subjs'].append(subj)
+            output_dict[seg]['closed_subjs'].append(subj)
+    return output_dict
 
-def resample_psds(freqs, psd, common_freqs, min_freq=0.3, max_freq=250, num=1000):
+
+def resample_psds(freqs, psd, common_freqs):
     """
     Interpolates the PSDs to a common set of frequencies
     Args:
