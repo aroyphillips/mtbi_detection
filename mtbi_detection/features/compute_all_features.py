@@ -73,7 +73,8 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', use_regio
     open_closed_dict = locd.load_open_closed_dict(**locd_params, savepath=open_closed_path)
     
     # transform the data
-    transform_data_dict = td.main(locd_params=locd_params, locd_savepath=open_closed_path, pad=kwargs['pad_psd'], bandwidth=kwargs['bandwidth'], n_jobs=kwargs['n_jobs'])
+    td_params = extract_transform_params(**kwargs)
+    transform_data_dict = td.main(locd_params=locd_params, locd_savepath=open_closed_path, n_jobs=kwargs['n_jobs'], as_paths=True, **td_params)
     transform_data_dict = _check_subjs_freqs(transform_data_dict)
     subjs = [str(s) for s in transform_data_dict['subjs'] if str(s).isnumeric()]
     channels = transform_data_dict['channels']
@@ -81,7 +82,6 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', use_regio
     print(f"My channels: {channels}")
     print(f"Subjs in transform_data_dict == subjs in open_closed_dict: {subjs == [open_closed_dict.keys()]}")
     print(f"Time to load data: {time.time()-loadtime} seconds")
-    # normalize the data
 
     # psd features
     print("Computing PSD powers and ratios")
@@ -94,30 +94,33 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', use_regio
 
     psd_params = extract_power_params(**kwargs)
     new_band_power_path, _ = du.check_and_make_params_folder(band_power_path, psd_params, paramfilename = 'psd_params.json', make_new_paramdir=True, save_early=False, skip_ui=True)
-    if 'psd_band_powers.csv' in os.listdir(new_band_power_path) and 'psd_band_ratios.csv' in os.listdir(new_band_power_path):
-        print("Found psd_band_powers.csv and psd_band_ratios.csv, loading")
-        band_powers = pd.read_csv(os.path.join(new_band_power_path, 'psd_band_powers.csv'), index_col=0)
-        band_ratios = pd.read_csv(os.path.join(new_band_power_path, 'psd_band_ratios.csv'), index_col=0)
-    else:
-        if same_band_ratio_method:
-            print("Band powers and ratios are the same method, so only computing once")
-            if type(psd_params['bin_method']) == str and psd_params['bin_method'] != 'all':
-                band_powers, band_ratios = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=True, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_method=psd_params['bin_method'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-            else:
-                band_powers, band_ratios = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=True, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['bin_method'], interbin_ratios=psd_params['interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-        else:
-            if type(psd_params['bin_method']) == str and psd_params['bin_method'] != 'all':
-                band_powers = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=False, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_method=psd_params['bin_method'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-                band_ratios = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=True, channels=channels, segment='all', band_method=psd_params['ratio_band_method'], n_division=psd_params['ratio_n_divisions'], log_division=psd_params['ratio_log_division'], bin_method=psd_params['ratio_bin_method'], l_freq=kwargs['l_freq'], fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-            else:
-                band_powers = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=False, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['bin_method'], interbin_ratios=psd_params['interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-                band_ratios = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['ratio_bin_method'], interbin_ratios=psd_params['ratio_interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
-        if kwargs['save']:
-            band_powers.to_csv(os.path.join(new_band_power_path, 'psd_band_powers.csv'))
-            band_ratios.to_csv(os.path.join(new_band_power_path, 'psd_band_ratios.csv'))
-            with open(os.path.join(new_band_power_path, 'psd_params.json'), 'w') as f:
-                print("Saving psd_params.json")
-                json.dump(psd_params, f)
+    
+    band_powers = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=False, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_method=psd_params['bin_method'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    band_ratios = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=True, channels=channels, segment='all', band_method=psd_params['ratio_band_method'], n_division=psd_params['ratio_n_divisions'], log_division=psd_params['ratio_log_division'], bin_method=psd_params['ratio_bin_method'], l_freq=kwargs['l_freq'], fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    # if 'psd_band_powers.csv' in os.listdir(new_band_power_path) and 'psd_band_ratios.csv' in os.listdir(new_band_power_path):
+    #     print("Found psd_band_powers.csv and psd_band_ratios.csv, loading")
+    #     band_powers = pd.read_csv(os.path.join(new_band_power_path, 'psd_band_powers.csv'), index_col=0)
+    #     band_ratios = pd.read_csv(os.path.join(new_band_power_path, 'psd_band_ratios.csv'), index_col=0)
+    # else:
+    #     if same_band_ratio_method:
+    #         print("Band powers and ratios are the same method, so only computing once")
+    #         if type(psd_params['bin_method']) == str and psd_params['bin_method'] != 'all':
+    #             band_powers, band_ratios = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=True, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_method=psd_params['bin_method'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #         else:
+    #             band_powers, band_ratios = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=True, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['bin_method'], interbin_ratios=psd_params['interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #     else:
+    #         if type(psd_params['bin_method']) == str and psd_params['bin_method'] != 'all':
+    #             band_powers = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=False, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_method=psd_params['bin_method'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #             band_ratios = cpf.create_psd_feature_from_method(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=True, channels=channels, segment='all', band_method=psd_params['ratio_band_method'], n_division=psd_params['ratio_n_divisions'], log_division=psd_params['ratio_log_division'], bin_method=psd_params['ratio_bin_method'], l_freq=kwargs['l_freq'], fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #         else:
+    #             band_powers = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=False, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['bin_method'], interbin_ratios=psd_params['interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #             band_ratios = cabmpf.create_psd_feature_from_methods(transform_data_dict, choose_subjs=subjs, return_both=False, ratio=True, channels=channels, segment='all', when_log=psd_params['when_log'], band_method=psd_params['band_method'], n_division=psd_params['n_divisions'], log_division=psd_params['log_division'], bin_methods=psd_params['ratio_bin_method'], interbin_ratios=psd_params['ratio_interbin_ratios'], l_freq=kwargs['l_freq'],fs=kwargs['fs_baseline'], save=kwargs['save'], savepath=new_band_power_path)
+    #     if kwargs['save']:
+    #         band_powers.to_csv(os.path.join(new_band_power_path, 'psd_band_powers.csv'))
+    #         band_ratios.to_csv(os.path.join(new_band_power_path, 'psd_band_ratios.csv'))
+    #         with open(os.path.join(new_band_power_path, 'psd_params.json'), 'w') as f:
+    #             print("Saving psd_params.json")
+    #             json.dump(psd_params, f)
      
 
     # regional psd features
@@ -336,6 +339,16 @@ def load_full_feature_df(savepath='/shared/roy/mTBI/saved_processed_data/mission
 
 #     return X_df
     
+
+def extract_transform_params(**kwargs):
+    params = {
+        'interpolate_spectrum': kwargs['interpolate_spectrum'],
+        'freq_interpolate_method': kwargs['freq_interpolate_method'],
+        'bandwidth': kwargs['bandwidth'],
+        'which_segment': 'avg'
+    }
+    return params
+
 def extract_locd_params(**kwargs):
     
     params = {
