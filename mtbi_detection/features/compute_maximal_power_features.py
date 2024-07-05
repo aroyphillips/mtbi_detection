@@ -34,7 +34,7 @@ LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
 
 def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None, num_powers=20, percentile_edge_method='automated', save=True):
-    """
+    """ 
     Given the transform_data_dict, compute the maximal power features
     Inputs:
         transform_data_dict: dictionary of the transform data
@@ -115,6 +115,7 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
             combined_power_df = power_df
 
         else:
+            # does forward and backward edge searching
             log_max_time = time.time()
             open_log_maximal_power_out = get_maximal_power(np.log10(stack_open_power), channels=channels, roi_dict=roi_dict, num_powers=num_powers, power_increment=power_increment, log_edges=True, reverse_log=False, chan_axis=1)
 

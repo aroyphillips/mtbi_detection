@@ -15,7 +15,7 @@ import mtbi_detection.features.compute_psd_features as cpf
 import mtbi_detection.features.compute_maximal_power_features as cmpf
 # import src.features.feature_utils as fu
 
-# import src.features.compute_spectral_edge_features as csef
+import mtbi_detection.features.compute_spectral_edge_frequencies as csef
 # import src.features.compute_complexity_features as ccf
 # import src.features.compute_complexity_features_from_psd as ccfp
 # import src.features.compute_graph_features as cgf
@@ -102,7 +102,10 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
 
     # sef features
     print("Computing spectral edge features")
-
+    seftime = time.time()
+    sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method']}
+    sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, **sef_params)
+    print(f"Finished computing spectral edge features in {time.time()-seftime} seconds, df shape: {sef_df.shape}")
     # # sef_params = None
     # if 'all_spectral_edge_features.csv' in os.listdir(newsavepath):
     #     print("Found all_spectral_edge_features.csv, loading...")
@@ -459,10 +462,18 @@ if __name__ == '__main__':
     parser.add_argument('--regional_bin_method', type=str, nargs='+', default=['all'], help="evaluated multiple bin_methods: ['avg', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p25', 'p75', 'p95', 'iqr'] or 'pX' for Xth percentile")
     parser.add_argument('--use_regional', action=argparse.BooleanOptionalAction, default=False, help="Whether to use regional PSD features")
     
-    ## other psd params
+    ## maximal power params
     parser.add_argument('--power_increment', type=float, default=None, help="The increments to find the maximal power in the psd")
     parser.add_argument('--num_powers', type=int, default=20, help="The number of maximal powers to find in the psd")
     parser.add_argument('--percentile_edge_method', type=str, default='custom', choices=['custom', 'automated'], help="The method to find the spectral edge")
+    
+    ## spectral edge params
+    parser.add_argument('--edge_increment', type=float, default=0.1, help="The increment to find the spectral edge")
+    parser.add_argument('--num_edges', type=int, default=20, help="The number of spectral edges to find")
+    parser.add_argument('--log_edges', action=argparse.BooleanOptionalAction, default=True, help="Whether to log the edges")
+    parser.add_argument('--reverse_log', action=argparse.BooleanOptionalAction, default=False, help="Whether to reverse the log")
+    parser.add_argument('--spectral_edge_method', type=str, default='custom', choices=['custom', 'automated', 'manual'], help="The method to find the spectral edge")
+    
     ## complexity params
     parser.add_argument('--window_len', type=int, default=10, help="The window length for the complexity features")
     parser.add_argument('--overlap', type=float, default=1, help="The overlap for the complexity features")
