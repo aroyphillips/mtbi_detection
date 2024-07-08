@@ -114,7 +114,7 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
             print(f"Time taken to compute closed maximal power features: {time.time() - ct} seconds")
 
             power_df = pd.concat([open_power_df, closed_power_df], axis=1)
-            power_df.columns = [f'maximal_open_{col}' for col in open_power_df.columns] + [f'maximal_closed_{col}' for col in closed_power_df.columns]
+            power_df.columns = [f'Maximal_open_{col}' for col in open_power_df.columns] + [f'Maximal_closed_{col}' for col in closed_power_df.columns]
             combined_power_df = power_df
 
         else:
@@ -141,7 +141,7 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
             closed_log_power_df.index = subjs
 
             log_power_df = pd.concat([open_log_power_df, closed_log_power_df], axis=1)
-            log_power_df.columns = [f'maximal_open_{col}' for col in open_log_power_df.columns] + [f'maximal_closed_{col}' for col in closed_log_power_df.columns]
+            log_power_df.columns = [f'Maximal_open_{col}' for col in open_log_power_df.columns] + [f'Maximal_closed_{col}' for col in closed_log_power_df.columns]
 
             print(f"Time taken to compute log maximal power features: {time.time() - log_max_time} seconds")
             print("Computing reverse log maximal power features")
@@ -210,7 +210,7 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
             combined_power_df = combined_power_df.loc[:,~combined_power_df.columns.duplicated()]
             
         if 'maximal' not in combined_power_df.columns[0]:
-            combined_power_df.columns = [f'maximal_{col}' for col in combined_power_df.columns]
+            combined_power_df.columns = [f'Maximal_{col}' for col in combined_power_df.columns]
         combined_power_df = fu.select_subjects_from_dataframe(combined_power_df, choose_subjs, internal_folder)
         # save the dataframe
         if save:

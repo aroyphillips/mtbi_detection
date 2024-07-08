@@ -1170,6 +1170,7 @@ def select_subjects_from_array(features, subjs, choose_subjs, internal_folder='d
         internal_folder: folder to load the splits from
     Outputs:
         features_select: numpy array with only the selected subjects
+        select_subjs: list of selected subjects
     
     """
     assert type(features) == np.ndarray, "features must be a numpy array"
@@ -1178,7 +1179,7 @@ def select_subjects_from_array(features, subjs, choose_subjs, internal_folder='d
     subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in select_subjs])
     features_select = features[subjs_idx]
     assert all([int(subj) in select_subjs for subj in subjs[subjs_idx]]), "Not all selected subjects are in the features"
-    return features_select
+    return features_select, select_subjs
 
 def select_subjects_from_dict(features, choose_subjs, internal_folder='data/internal/'):
     """
@@ -1195,7 +1196,7 @@ def select_subjects_from_dict(features, choose_subjs, internal_folder='data/inte
     assert list(features.keys())[0].isnumeric()
     assert choose_subjs in ['train', 'ival', 'holdout', 'dev'], "choose_subjs must be one of ['train', 'ival', 'holdout', 'dev']"
     select_subjs = ld.load_splits(internal_folder)[choose_subjs]
-    features_select = {subj: features[subj] for subj in features.keys if int(subj) in select_subjs}
+    features_select = {subj: features[subj] for subj in features.keys() if int(subj) in select_subjs}
     assert all([int(subj) in select_subjs for subj in features_select.keys()]), "Not all selected subjects are in the features"
     return features_select
 

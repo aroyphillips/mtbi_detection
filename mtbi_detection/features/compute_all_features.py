@@ -10,15 +10,13 @@ import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.data.load_open_closed_data as locd
 import mtbi_detection.data.transform_data as td
+import mtbi_detection.features.feature_utils as fu
 
 import mtbi_detection.features.compute_psd_features as cpf
 import mtbi_detection.features.compute_maximal_power_features as cmpf
-# import src.features.feature_utils as fu
-
 import mtbi_detection.features.compute_spectral_edge_frequencies as csef
 import mtbi_detection.features.compute_complexity_features as ccf
-# import src.features.compute_complexity_features as ccf
-# import src.features.compute_complexity_features_from_psd as ccfp
+import mtbi_detection.features.compute_psd_complexity_features as cpcf
 # import src.features.compute_graph_features as cgf
 # import src.features.parameterize_spectra as psf
 # import src.models.estimate_probabilities_from_symptoms as epfs
@@ -27,6 +25,8 @@ import mtbi_detection.features.compute_complexity_features as ccf
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
 roi_dict = {
     'Temporal': ['F7', 'F8', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6'],
@@ -112,11 +112,13 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing complexity features")
     complexityt = time.time()
     complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': choose_subjs}
-    complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, savepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, **complexity_params)
+    complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, featurepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, **complexity_params)
     print(f"Finished computing complexity features in {time.time()-complexityt} seconds, feature array shape: {complexity_feature_df.shape}")
 
     # psd complexity features
-
+    print("Computing PSD complexity features")
+    complexityp = time.time()
+    psd_complexity_feature_df = cpcf.main(open_closed_params, transform_data_params, channels, open_closed_path=LOCD_DATAPATH, choose_subjs='train', featurepath=FEATUREPATH, internal_folder='data/internal/', verbosity=1, save=True):
     # if 'all_full_psd_complexity_features.csv' in os.listdir(newsavepath):
     #     print("Found all_full_psd_complexity_features.csv, loading...")
     #     psd_complexity_feature_df = pd.read_csv(os.path.join(newsavepath, 'all_full_psd_complexity_features.csv'), index_col=0)

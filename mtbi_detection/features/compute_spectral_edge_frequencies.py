@@ -118,7 +118,7 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
 
     if found_match:
         sef_df = pd.read_csv(os.path.join(savepath, 'all_spectral_edge_frequencies.csv'), index_col=0)
-        assert set(sef_df.index) == fu.select_subjects_from_dataframe(sef_df, choose_subjs, internal_folder=internal_folder).index)
+        assert set(sef_df.index) == set(fu.select_subjects_from_dataframe(sef_df, choose_subjs, internal_folder=internal_folder).index)
     else:
         if transform_data_dict is None:
             # load the psd data
@@ -228,10 +228,11 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
 
             df_concat = pd.concat(dfs_concat, axis=1)
             df_concat = fu.drop_duplicate_columns(df_concat)
-            sef_df = fu.select_subjects_from_dataframe(df_concat, choose_subjs, internal_folder=internal_folder)
+            sef_df = df_concat
+        sef_df = fu.select_subjects_from_dataframe(sef_df, choose_subjs, internal_folder=internal_folder)
 
         if "sef" not in sef_df.columns[0]:
-            sef_df.columns = ['sef_' + col for col in sef_df.columns]
+            sef_df.columns = ['SEF_' + col for col in sef_df.columns]
         if save:
             sef_df.to_csv(os.path.join(savepath, 'all_spectral_edge_frequencies.csv'))
             # save the parameters

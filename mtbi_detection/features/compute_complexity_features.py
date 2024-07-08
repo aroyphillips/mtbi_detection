@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import time
-from typing import List, Dict, Tuple
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 import antropy as ant
 import hurst
@@ -498,7 +497,7 @@ def reshape_feature_distribution_array(distribution_features, subjs, channels, d
     return reshaped_features, new_columns
 
 
-def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, save=False, savepath=FEATUREPATH, choose_subjs='train', internal_folder='data/internal/'):
+def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, save=False, featurepath=FEATUREPATH, choose_subjs='train', internal_folder='data/internal/'):
     """
     Given the params to load the open closed pathdict and the epoch making params
     compute the complexity features for each subject and save them to a csv
@@ -522,7 +521,7 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
     open_closed_dict = locd.load_open_closed_pathdict(savepath=LOCD_DATAPATH, **open_closed_params)
     
     all_params = {**open_closed_params, 'channels': channels, 'window_len': window_len, 'overlap': overlap, 'choose_subjs': choose_subjs}
-    complexity_path = os.path.join(savepath, 'complexity_features')
+    complexity_path = os.path.join(featurepath, 'complexity_features')
     if not os.path.exists(complexity_path):
         os.makedirs(complexity_path)
     du.clean_params_path(complexity_path)
@@ -546,7 +545,7 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
 
         
         states = ['open', 'closed']
-        epochs_dict = {state: {subj: [] for subj in subjs} for state in states}
+        epochs_dict = {state: {subj: [] for subj in subjs} for state in states} # will become approximately 1GB (83471637 bytes)
         for sdx, subj in enumerate(subjs):
             if verbosity > 0:
                 print(f"Computing epochs for subject {subj}: {sdx+1}/{len(subjs)}")
@@ -602,7 +601,7 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
             feature_dfs.append(feature_df)
 
         all_complexity_feature_df = pd.concat(feature_dfs, axis=1)
-        all_complexity_feature_df.columns = [f"complexity_{col}" for col in all_complexity_feature_df.columns]
+        all_complexity_feature_df.columns = [f"Complexity_{col}" for col in all_complexity_feature_df.columns]
         assert set(all_complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(all_complexity_feature_df).index), f"Subjects in dataframe do not match subjects in the index"
         if verbosity > 0:
             print(f"Finished making dataframes in {time.time() - dftime} seconds")
