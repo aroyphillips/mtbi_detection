@@ -1138,5 +1138,66 @@ def kl_divergence_gaussian(mu1, sigma1, mu2, sigma2):
     """ 
     return np.log(sigma2/sigma1) + (sigma1**2 + (mu1 - mu2)**2) / (2 * sigma2**2) - 0.5 # KL = E[log(sigma2/sigma1) + 1/2 * [(x-mu2)/sigma2]^2 - (x-mu1)/sigma1]^2]
 
+
+def select_subjects_from_dataframe(features, choose_subjs, internal_folder='data/internal/'):
+    """
+    Returns a subset of the features dataframe with only the subjects in choose_subjs 
+    Inputs:
+        features: pandas DataFrame with features
+        choose_subjs: data split to choose the subjects from (train, val, test)
+        internal_folder: folder to load the splits from
+    Outputs:
+        features_select: pandas DataFrame with only the selected subjects
+    
+    """
+    assert type(features) == pd.DataFrame, "features must be a pandas DataFrame"
+    assert choose_subjs in ['train', 'ival', 'holdout', 'dev'], "choose_subjs must be one of ['train', 'ival', 'holdout', 'dev']"
+    subjs = features.index
+    select_subjs = ld.load_splits(internal_folder)[choose_subjs]
+    subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in select_subjs])
+    subjs = list(np.array(subjs)[subjs_idx])
+    features_select = features.loc[subjs]
+    assert all([int(subj) in select_subjs for subj in features_select.index]), "Not all selected subjects are in the features"
+    return features_select
+
+def select_subjects_from_array(features, subjs, choose_subjs, internal_folder='data/internal/'):
+    """
+    Returns a subset of the features array with only the subjects in choose_subjs 
+    Inputs:
+        features: numpy array with features
+        subjs: list of subject ids
+        choose_subjs: data split to choose the subjects from (train, val, test)
+        internal_folder: folder to load the splits from
+    Outputs:
+        features_select: numpy array with only the selected subjects
+    
+    """
+    assert type(features) == np.ndarray, "features must be a numpy array"
+    assert choose_subjs in ['train', 'ival', 'holdout', 'dev'], "choose_subjs must be one of ['train', 'ival', 'holdout', 'dev']"
+    select_subjs = ld.load_splits(internal_folder)[choose_subjs]
+    subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in select_subjs])
+    features_select = features[subjs_idx]
+    assert all([int(subj) in select_subjs for subj in subjs[subjs_idx]]), "Not all selected subjects are in the features"
+    return features_select
+
+def select_subjects_from_dict(features, choose_subjs, internal_folder='data/internal/'):
+    """
+    Returns a subset of the features dictionary with only the subjects in choose_subjs 
+    Inputs:
+        features: dictionary with features
+        choose_subjs: data split to choose the subjects from (train, val, test)
+        internal_folder: folder to load the splits from
+    Outputs:
+        features_select: dictionary with only the selected subjects
+    
+    """
+    assert type(features) == dict, "features must be a dictionary"
+    assert list(features.keys())[0].isnumeric()
+    assert choose_subjs in ['train', 'ival', 'holdout', 'dev'], "choose_subjs must be one of ['train', 'ival', 'holdout', 'dev']"
+    select_subjs = ld.load_splits(internal_folder)[choose_subjs]
+    features_select = {subj: features[subj] for subj in features.keys if int(subj) in select_subjs}
+    assert all([int(subj) in select_subjs for subj in features_select.keys()]), "Not all selected subjects are in the features"
+    return features_select
+
 if __name__ == '__main__':
     pass

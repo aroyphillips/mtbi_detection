@@ -82,7 +82,7 @@ def get_spectral_edges(psd, freqs, channels=CHANNELS, spectral_edges=None, edge_
     else:
         return edges
 
-def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FEATUREPATH, num_edges=None, edge_increment=None, log_edges=True, reverse_log=False, spectral_edge_method='automated', chan_axis=0):
+def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FEATUREPATH, num_edges=None, edge_increment=None, log_edges=True, reverse_log=False, spectral_edge_method='automated', chan_axis=0, choose_subjs='train', internal_folder='data/internal/'):
     """
     Compute the spectral edge features for the open and closed eyes data
     Inputs:
@@ -96,6 +96,8 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
         reverse_log: whether to reverse the log edges
         spectral_edge_method: method to compute spectral edges
         chan_axis: axis of channels
+        choose_subjs: which data split to choose
+        internal_folder: folder containing the data splits
     Outputs:
         df_concat: dataframe containing the spectral edge frequencies
     """
@@ -110,11 +112,13 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
     spectral_params = {'edge_increment': edge_increment, 'num_powers': num_edges, 'log_edges':log_edges, 'reverse_log': reverse_log} if spectral_edge_method == 'manual' else {'spectral_edges': spectral_edges}
     if spectral_edge_method == 'automated':
         spectral_params = {'spectral_edge_method': 'automated'}
+    spectral_params['choose_subjs'] = choose_subjs
     du.clean_params_path(savepath)
     savepath, found_match = du.check_and_make_params_folder(savepath, spectral_params, save_early=False)
 
     if found_match:
         sef_df = pd.read_csv(os.path.join(savepath, 'all_spectral_edge_frequencies.csv'), index_col=0)
+        assert set(sef_df.index) == fu.select_subjects_from_dataframe(sef_df, choose_subjs, internal_folder=internal_folder).index)
     else:
         if transform_data_dict is None:
             # load the psd data
@@ -224,7 +228,7 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
 
             df_concat = pd.concat(dfs_concat, axis=1)
             df_concat = fu.drop_duplicate_columns(df_concat)
-            sef_df = df_concat
+            sef_df = fu.select_subjects_from_dataframe(df_concat, choose_subjs, internal_folder=internal_folder)
 
         if "sef" not in sef_df.columns[0]:
             sef_df.columns = ['sef_' + col for col in sef_df.columns]

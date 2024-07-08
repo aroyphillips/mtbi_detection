@@ -16,6 +16,7 @@ import mtbi_detection.features.compute_maximal_power_features as cmpf
 # import src.features.feature_utils as fu
 
 import mtbi_detection.features.compute_spectral_edge_frequencies as csef
+import mtbi_detection.features.compute_complexity_features as ccf
 # import src.features.compute_complexity_features as ccf
 # import src.features.compute_complexity_features_from_psd as ccfp
 # import src.features.compute_graph_features as cgf
@@ -96,43 +97,25 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     # maximal power features
     print("Computing Maximal Power PSD features")
     maximtime = time.time()
-    maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method']}
-    maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, **maximal_power_params)
-    print(f"Finished computing maximal power features in {time.time()-maximtime} seconds, df shape: {maximal_power_df.shape}")
+    maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method'], 'choose_subjs': choose_subjs}
+    maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, internal_folder=internal_folder, **maximal_power_params)
+    print(f"Finished computing maximal power features in {time.time()-maximtime} seconds, feature array shape: {maximal_power_df.shape}")
 
     # sef features
     print("Computing spectral edge features")
     seftime = time.time()
-    sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method']}
-    sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, **sef_params)
-    print(f"Finished computing spectral edge features in {time.time()-seftime} seconds, df shape: {sef_df.shape}")
-    # # sef_params = None
-    # if 'all_spectral_edge_features.csv' in os.listdir(newsavepath):
-    #     print("Found all_spectral_edge_features.csv, loading...")
-    #     sef_df = pd.read_csv(os.path.join(newsavepath, 'all_spectral_edge_features.csv'), index_col=0)
-    # else:
-    #     sef_df = csef.main(transform_data_dict, channels=channels, save=kwargs['save'], savepath=newsavepath)
-    #     if kwargs['save']:
-    #         sef_df.to_csv(os.path.join(newsavepath, 'all_spectral_edge_features.csv'))
+    sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method'], 'choose_subjs': choose_subjs}
+    sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, internal_folder=internal_folder, **sef_params)
+    print(f"Finished computing spectral edge features in {time.time()-seftime} seconds, feature array shape: {sef_df.shape}")
 
-    # # complexity features
-    # print(f"Time to compute PSD features: {time.time()-psdtime} seconds, band_powers shape: {band_powers.shape}, band_ratios shape: {band_ratios.shape}, maximal_power_df shape: {maximal_power_df.shape}, sef_df shape: {sef_df.shape}")
-    
-    # print("Computing complexity features")
-    # complexity_path = os.path.join(newsavepath, 'complexity_features')
-    # if not os.path.exists(complexity_path):
-    #     os.mkdir(complexity_path)
-    # complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], **locd_params}
-    # new_complexity_path, _ = du.check_and_make_params_folder(complexity_path, complexity_params, paramfilename = 'complexity_params.json', make_new_paramdir=True, save_early=False, skip_ui=True)
-    # if 'all_complexity_features.csv' in os.listdir(new_complexity_path):
-    #     print("Found all_complexity_features.csv, loading...")
-    #     complexity_feature_df = pd.read_csv(os.path.join(new_complexity_path, 'all_complexity_features.csv'), index_col=0)
-    # else:
-    #     complexity_feature_df = ccf.main(open_closed_dict=open_closed_dict, channels=channels, save=kwargs['save'], savepath=new_complexity_path, window_len=kwargs['window_len'], overlap=kwargs['overlap'], verbosity=kwargs['verbosity'], skip_ui=True)
-    #     if kwargs['save']:
-    #         complexity_feature_df.to_csv(os.path.join(new_complexity_path, 'all_complexity_features.csv'))
-    #         with open(os.path.join(new_complexity_path, 'complexity_params.json'), 'w') as f:
-    #             json.dump(complexity_params, f)
+    # complexity features
+    print("Computing complexity features")
+    complexityt = time.time()
+    complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': choose_subjs}
+    complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, savepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, **complexity_params)
+    print(f"Finished computing complexity features in {time.time()-complexityt} seconds, feature array shape: {complexity_feature_df.shape}")
+
+    # psd complexity features
 
     # if 'all_full_psd_complexity_features.csv' in os.listdir(newsavepath):
     #     print("Found all_full_psd_complexity_features.csv, loading...")
@@ -143,7 +126,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     #     psd_complexity_feature_df = ccfp.main(transform_dict=transform_data_dict, channels=channels, save=kwargs['save'], savepath=newsavepath, verbosity=kwargs['verbosity'], skip_ui=True)
     #     if kwargs['save']:
     #         psd_complexity_feature_df.to_csv(os.path.join(newsavepath, 'all_full_psd_complexity_features.csv'))
-    # print(f"Finished computing complexity features in {time.time()-psdtime} seconds, df shape: {complexity_feature_df.shape}") 
+    # print(f"Finished computing complexity features in {time.time()-psdtime} seconds, feature array shape: {complexity_feature_df.shape}") 
 
     # # compute the graph featuares
     # # print("Computing graph features")
@@ -165,7 +148,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     #         graph_feature_df.to_csv(os.path.join(newsavepath, 'all_metric_graphs_features.csv'))
         
 
-    # print(f"Finished computing graph features in {time.time()-gt} seconds, df shape: {graph_feature_df.shape}")
+    # print(f"Finished computing graph features in {time.time()-gt} seconds, feature array shape: {graph_feature_df.shape}")
     # # # compute ecg features
     # # print("Computing ECG features") # let's just do this elsewhere
     # if kwargs['use_ecg']:
@@ -477,8 +460,7 @@ if __name__ == '__main__':
     ## complexity params
     parser.add_argument('--window_len', type=int, default=10, help="The window length for the complexity features")
     parser.add_argument('--overlap', type=float, default=1, help="The overlap for the complexity features")
-    parser.add_argument('--verbosity', type=int, default=1, help="The verbosity for the complexity features")
-    
+
     ## graph params
     parser.add_argument('--graph_band_method', type=str, default='standard', help="Possible options: 'standard', 'anton', 'buzsaki', 'linear_50', 'linear_100', 'linear_250'")
     parser.add_argument('--graph_n_divisions', type=int, default=1, help="Number of divisions to make in the frequency band: 1,2,3,4,5 for all except the linear_50+bands")
@@ -510,6 +492,8 @@ if __name__ == '__main__':
     
     ## general params
     parser.add_argument('--choose_subjs', type=str, default='train', help='Which subjects to choose from the data')
+    parser.add_argument('--verbosity', type=int, default=1, help="The verbosity for the complexity features")
+    
     args = parser.parse_args()
     print(args)
     uin = input("Continue? (y/n)")

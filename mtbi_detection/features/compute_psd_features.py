@@ -47,7 +47,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
     du.clean_params_path(power_path)
     powersavepath, found_match = du.check_and_make_params_folder(power_path, power_params)
     if found_match:
-        power_feature_df, found_match = load_power_features(powersavepath, ratio=ratio)   
+        power_feature_df, found_match = load_power_features(powersavepath, ratio=ratio)
+        assert set(power_feature_df.index) == set(fu.select_subjects_from_dataframe(power_feature_df, choose_subjs, internal_folder).index), "Index mismatch"
     if not found_match:
         unraveled_mtd = td.unravel_multitaper_dataset(transform_data_dict['subj_data'])
         X_open = np.stack(unraveled_mtd['avg']['open_power'])
@@ -80,11 +81,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
         assert X_closed.shape[2] == len(freqs)
 
         if choose_subjs is not None:
-            select_subjs = ld.load_splits(internal_folder)[choose_subjs]
-            subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in select_subjs])
-            subjs = list(np.array(subjs)[subjs_idx])
-            X_open = X_open[subjs_idx]
-            X_closed = X_closed[subjs_idx]
+            X_open = fu.select_subjects_from_array(X_open, subjs, choose_subjs, internal_folder)
+            X_closed = fu.select_subjects_from_array(X_closed, subjs, choose_subjs, internal_folder)
 
         bands = fu.make_bands(basis=band_method, verbosity=verbosity, fs=fs, min_freq=l_freq)
         if state == 'open':
@@ -184,7 +182,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
             feature_cols = concat_flat_feature_cols_bins
 
         power_feature_df = pd.DataFrame(X, columns=feature_cols, index=subjs)
-
+        assert set(power_feature_df.index) == set(fu.select_subjects_from_dataframe(power_feature_df, choose_subjs, internal_folder).index), "Index mismatch after selecting subjects"
         if save:
             basename = f'psd_power_features.csv' if not ratio else f'psd_power_features_ratio.csv'
             savefilename = os.path.join(powersavepath, basename)
