@@ -520,17 +520,15 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
     distribution_metrics = ['mean', 'std', 'median', 'iqr', 'skewness', 'kurtosis']
     open_closed_dict = locd.load_open_closed_pathdict(savepath=LOCD_DATAPATH, **open_closed_params)
     
-    all_params = {**open_closed_params, 'channels': channels, 'window_len': window_len, 'overlap': overlap, 'choose_subjs': choose_subjs}
+    all_params = du.make_dict_saveable({**open_closed_params, 'channels': list(channels), 'window_len': window_len, 'overlap': overlap, 'choose_subjs': choose_subjs})
     complexity_path = os.path.join(featurepath, 'complexity_features')
-    if not os.path.exists(complexity_path):
-        os.makedirs(complexity_path)
     du.clean_params_path(complexity_path)
     complexitysavepath, found_match = du.check_and_make_params_folder(complexity_path, all_params)
     if found_match:
         if verbosity > 0:
             print(f"Found match for params in {complexitysavepath}")
         all_complexity_feature_df = pd.read_csv(os.path.join(complexitysavepath, 'all_complexity_features.csv'), index_col=0)
-        assert set(all_complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(all_complexity_feature_df).index), f"Subjects in dataframe do not match subjects in the index"
+        assert set(all_complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(all_complexity_feature_df, choose_subjs, internal_folder).index), f"Subjects in dataframe do not match subjects in the index"
     else:
             
         open_closed_dict = fu.select_subjects_from_dict(open_closed_dict, choose_subjs, internal_folder=internal_folder)
@@ -602,7 +600,7 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
 
         all_complexity_feature_df = pd.concat(feature_dfs, axis=1)
         all_complexity_feature_df.columns = [f"Complexity_{col}" for col in all_complexity_feature_df.columns]
-        assert set(all_complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(all_complexity_feature_df).index), f"Subjects in dataframe do not match subjects in the index"
+        assert set(all_complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(all_complexity_feature_df, choose_subjs, internal_folder).index), f"Subjects in dataframe do not match subjects in the index"
         if verbosity > 0:
             print(f"Finished making dataframes in {time.time() - dftime} seconds")
         if save:

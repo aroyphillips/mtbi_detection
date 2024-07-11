@@ -713,8 +713,16 @@ def bin_psd_by_bands(psd, freqs, bands, method='avg', verbosity=2):
 def make_bands(basis='custom', divisions=1, log_division=False, custom_bands=None, fs=500, verbosity=1, min_freq=0.3):
     """
     Given a string to specify the bands to use, return a list of tuples of the bands
-
-    
+    Inputs:
+        basis: string specifying the basis for the bands. Must be one of 'standard', 'log-standard', 'custom', 'linear', 'log'
+        divisions: int, number of divisions to make in each band
+        log_division: bool, if True, divide each band on a log scale, otherwise divide on a linear scale
+        custom_bands: list of tuples of the custom bands to use
+        fs: int, sampling frequency
+        verbosity: int, level of verbosity
+        min_freq: float, minimum frequency to consider
+    Outputs:
+        bands: list of tuples of the bands
     """
     
     basis = str(basis)
@@ -1160,7 +1168,7 @@ def select_subjects_from_dataframe(features, choose_subjs, internal_folder='data
     assert all([int(subj) in select_subjs for subj in features_select.index]), "Not all selected subjects are in the features"
     return features_select
 
-def select_subjects_from_array(features, subjs, choose_subjs, internal_folder='data/internal/'):
+def select_subjects_from_arraylike(features, subjs, choose_subjs, internal_folder='data/internal/'):
     """
     Returns a subset of the features array with only the subjects in choose_subjs 
     Inputs:
@@ -1175,10 +1183,11 @@ def select_subjects_from_array(features, subjs, choose_subjs, internal_folder='d
     """
     assert type(features) == np.ndarray, "features must be a numpy array"
     assert choose_subjs in ['train', 'ival', 'holdout', 'dev'], "choose_subjs must be one of ['train', 'ival', 'holdout', 'dev']"
-    select_subjs = ld.load_splits(internal_folder)[choose_subjs]
-    subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in select_subjs])
+    all_select_subjs = ld.load_splits(internal_folder)[choose_subjs]
+    subjs_idx = np.array([idx for idx, subj in enumerate(subjs) if int(subj) in all_select_subjs])
     features_select = features[subjs_idx]
-    assert all([int(subj) in select_subjs for subj in subjs[subjs_idx]]), "Not all selected subjects are in the features"
+    select_subjs = [subjs[idx] for idx in subjs_idx]
+    assert all([int(subjs[idx]) in all_select_subjs for idx in subjs_idx]), "Not all selected subjects are in the features"
     return features_select, select_subjs
 
 def select_subjects_from_dict(features, choose_subjs, internal_folder='data/internal/'):

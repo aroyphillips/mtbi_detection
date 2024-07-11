@@ -25,7 +25,7 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
         ratio (bool): whether to compute ratios between bins
         channels (list): list of channels to use
         state (str): which state to use. One of ['open', 'closed', 'all']
-        band_method (str): method for computing frequency bands. One of ['standard', 'custom', 'standard+custom']
+        band_method (str): method for computing frequency bands. One of ['standard', 'custom', 'linear']
         bin_methods (str): methods for binning the PSD. One of ['all', 'avg', 'sum', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90', 'p95', 'iqr']
     
     """    
@@ -81,8 +81,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
         assert X_closed.shape[2] == len(freqs)
 
         if choose_subjs is not None:
-            X_open, _ = fu.select_subjects_from_array(X_open, subjs, choose_subjs, internal_folder)
-            X_closed, subjs = fu.select_subjects_from_array(X_closed, subjs, choose_subjs, internal_folder)
+            X_open, _ = fu.select_subjects_from_arraylike(X_open, subjs, choose_subjs, internal_folder)
+            X_closed, subjs = fu.select_subjects_from_arraylike(X_closed, subjs, choose_subjs, internal_folder)
 
         bands = fu.make_bands(basis=band_method, verbosity=verbosity, fs=fs, min_freq=l_freq)
         if state == 'open':

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import time
+import argparse
 import json
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.features.compute_complexity_features as ccf
@@ -102,6 +103,7 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
     # load the psd data
 
     all_params = {**open_closed_params, **transform_data_params, 'choose_subjs': choose_subjs}
+    du.clean_params_path(savepath)
     pcom_savepath, found_match = du.check_and_make_params_folder(savepath, all_params)
     savefilename = os.path.join(pcom_savepath, 'psd_complexity_features.csv')
     if found_match:
@@ -110,7 +112,7 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
     else:
         loadtime = time.time()
         transform_data_dict = td.main(locd_params=open_closed_params, locd_savepath=open_closed_path, n_jobs=1, as_paths=False, **transform_data_params)
-        assert channels == transform_data_dict['channels']
+        assert list(channels) == list(transform_data_dict['channels'])
         print('Time taken to load data: ', time.time() - loadtime)
         
 
@@ -125,8 +127,8 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
         assert subjs == unraveled_mtd['avg']['closed_subjs']
         assert stack_open_power.shape == stack_closed_power.shape
         assert stack_open_power.shape[0] == len(subjs)
-        stack_open_power,_ = fu.select_subjects_from_array(stack_open_power, subjs, choose_subjs, internal_folder=internal_folder)
-        stack_closed_power, subjs = fu.select_subjects_from_array(stack_closed_power, subjs, choose_subjs, internal_folder=internal_folder)
+        stack_open_power,_ = fu.select_subjects_from_arraylike(stack_open_power, subjs, choose_subjs, internal_folder=internal_folder)
+        stack_closed_power, subjs = fu.select_subjects_from_arraylike(stack_closed_power, subjs, choose_subjs, internal_folder=internal_folder)
         
         ## compute the entropy features
         if verbosity > 0:
@@ -178,7 +180,7 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
         complexity_feature_df = pd.concat(feature_dfs, axis=1)
         # add "PSD_Based in front of each column"
         complexity_feature_df.columns = [f"PSD_Complexity_{col}" for col in complexity_feature_df.columns]
-        assert set(complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(complexity_feature_df, choose_subjs, internal_folder=internal_folder)), f"Dataset split subjects do not match the subjects in the dataframe"
+        assert set(complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(complexity_feature_df, choose_subjs, internal_folder=internal_folder).index), f"Dataset split subjects do not match the subjects in the dataframe"
         if verbosity > 0:
             print(f"Finished making dataframes in {time.time() - dftime} seconds")
         if save:
@@ -196,5 +198,40 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
 
 if __name__=='__main__':
     starttime =time.time()
-    main()
+
+    parser = argparse.ArgumentParser()
+
+    ## LOCD params
+    parser.add_argument('--l_freq', type=float, default=0.3)
+    parser.add_argument('--h_freq', type=float, default=None)
+    parser.add_argument('--fs_baseline', type=float, default=500)
+    parser.add_argument('--order', type=int, default=6)
+    parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
+    parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
+    parser.add_argument('--num_subjs', type=int, default=151)
+    parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--reference_method', type=str, default='CSD')
+    parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
+    parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
+    parser.add_argument('--filter_ecg', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--late_filter_ecg', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--ecg_l_freq', type=float, default=8)
+    parser.add_argument('--ecg_h_freq', type=float, default=16)
+    parser.add_argument('--ecg_thresh', type=str, default='auto')
+    parser.add_argument('--ecg_method', type=str, default='correlation')
+    parser.add_argument('--include_ecg', action=argparse.BooleanOptionalAction, default=True)
+
+    ## td_params
+    parser.add_argument('--interpolate_spectrum', type=int, default=1000)
+    parser.add_argument('--freq_interp_method', type=str, default='linear', choices=['linear', 'log', 'log10'])
+    parser.add_argument('--which_segment', type=str, default='avg', choices=['first', 'second', 'avg'], help='Which segment to use for the multitaper')
+    parser.add_argument('--bandwidth', type=float, default=1)
+
+    all_params = vars(parser.parse_args())
+    td_params = {key: value for key, value in all_params.items() if key in ['interpolate_spectrum', 'freq_interp_method', 'which_segment', 'bandwidth']}
+    locd_params = {key: value for key, value in all_params.items() if key not in td_params}
+    channels = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
+
+    complexity_feature_df = main(locd_params, td_params, channels)
     print(f"Finished in {time.time()-starttime} s")

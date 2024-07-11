@@ -64,7 +64,7 @@ def load_fif_from_subject(subject, fif_files, timepoint='baseline', preload=Fals
         mne_raws = [mne.io.read_raw_fif(file, verbose=verbose, preload=preload) for file in subject_fif_files]
         return mne_raws
 
-def load_subjects_data(datapath, subjects=None, num_subjects=None, follow_annotations=False, timepoint='baseline', recording_type='raw', preload=False, verbose=True, annotations_folder='data/tables/', as_paths=False):
+def load_subjects_data(datapath, subjects=None, num_subjects=None, follow_annotations=False, timepoint='baseline', recording_type='raw', preload=False, verbose=True, tables_folder='data/tables/', as_paths=False):
     """
     Given a list of subjects and the type of segment and epoch return a dictionary of mne raw objects where the key is the subject number and the value is the list of raw mne raw objects
     Inputs:
@@ -102,7 +102,7 @@ def load_subjects_data(datapath, subjects=None, num_subjects=None, follow_annota
     if subjects is None:
         # get the directory that is only a number within a path
         if follow_annotations:
-            start_stop_annotations = load_annotations(base_folder=annotations_folder)
+            start_stop_annotations = load_annotations(tables_folder=tables_folder)
             subjects = np.unique(start_stop_annotations["Study ID"])
             # drop the nan values
             subjects = subjects[~np.isnan(subjects)][:num_subjects].astype(int)
@@ -318,7 +318,7 @@ def get_labels_from_subjects(subjects):
     label_dict = load_label_dict()
     return [label_dict[int(subject)] for subject in subjects]
 
-def load_annotations(filename="start_stop_annotations.csv", base_folder='data/tables/', num_rows=None):
+def load_annotations(filename="start_stop_annotations.csv", tables_folder='data/tables/', num_rows=None):
     """
     Load the start stop annotations from the csv file
     Args:
@@ -328,7 +328,7 @@ def load_annotations(filename="start_stop_annotations.csv", base_folder='data/ta
     Returns:
         start_stop_annotations: dataframe containing the start stop annotations
     """
-    csv_filename = base_folder + filename
+    csv_filename = os.path.join(tables_folder, filename)
     start_stop_annotations = pd.read_csv(csv_filename)
     if num_rows is not None:
         start_stop_annotations = start_stop_annotations.iloc[:num_rows]
@@ -382,12 +382,12 @@ def make_labels_dict(df, label_buzz = 'CaseContrlInd', subj_buzz = 'SubjectIDNum
     return labels_dict
 
 
-def get_ecg_channel_locations(n_subjs=None, annotations=None, col_name='ECG Location', subjs=None, subjs_col='Study ID', base_folder='data/tables/'):
+def get_ecg_channel_locations(n_subjs=None, annotations=None, col_name='ECG Location', subjs=None, subjs_col='Study ID', tables_folder='data/tables/'):
     """
     Returns a list of the ecg channel locations
     """
     if annotations is None:
-        annotations = load_annotations(base_folder=base_folder)
+        annotations = load_annotations(tables_folder=tables_folder)
     if subjs is not None:
         # make sure the ecg channels correspond to the subjects in subjs_col of annotations
         annotations = annotations.copy(deep=True)

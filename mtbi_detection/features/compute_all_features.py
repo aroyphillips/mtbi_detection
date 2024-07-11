@@ -17,7 +17,7 @@ import mtbi_detection.features.compute_maximal_power_features as cmpf
 import mtbi_detection.features.compute_spectral_edge_frequencies as csef
 import mtbi_detection.features.compute_complexity_features as ccf
 import mtbi_detection.features.compute_psd_complexity_features as cpcf
-# import src.features.compute_graph_features as cgf
+import mtbi_detection.features.compute_network_features as cnf
 # import src.features.parameterize_spectra as psf
 # import src.models.estimate_probabilities_from_symptoms as epfs
 
@@ -62,8 +62,6 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     savepath = os.path.join(savepath, 'features')
 
     starttime = time.time()
-    # temporary hack to put it all in the same dict
-    graph_params = extract_graph_params(**kwargs)
     locd_params = extract_locd_params(**kwargs)
 
 
@@ -118,59 +116,16 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     # psd complexity features
     print("Computing PSD complexity features")
     complexityp = time.time()
-    psd_complexity_feature_df = cpcf.main(open_closed_params, transform_data_params, channels, open_closed_path=LOCD_DATAPATH, choose_subjs='train', featurepath=FEATUREPATH, internal_folder='data/internal/', verbosity=1, save=True):
-    # if 'all_full_psd_complexity_features.csv' in os.listdir(newsavepath):
-    #     print("Found all_full_psd_complexity_features.csv, loading...")
-    #     psd_complexity_feature_df = pd.read_csv(os.path.join(newsavepath, 'all_full_psd_complexity_features.csv'), index_col=0)
-    #     if "PSD" not in psd_complexity_feature_df.columns[0]:
-    #         psd_complexity_feature_df.columns = [f'PSD_based_{col}' for col in psd_complexity_feature_df.columns]
-    # else:
-    #     psd_complexity_feature_df = ccfp.main(transform_dict=transform_data_dict, channels=channels, save=kwargs['save'], savepath=newsavepath, verbosity=kwargs['verbosity'], skip_ui=True)
-    #     if kwargs['save']:
-    #         psd_complexity_feature_df.to_csv(os.path.join(newsavepath, 'all_full_psd_complexity_features.csv'))
-    # print(f"Finished computing complexity features in {time.time()-psdtime} seconds, feature array shape: {complexity_feature_df.shape}") 
+    psd_complexity_feature_df = cpcf.main(locd_params, td_params, channels, open_closed_path=open_closed_path, choose_subjs='train', featurepath=featurepath, internal_folder=internal_folder, verbosity=kwargs['verbosity'], save=True)
+    print(f"Finished computing PSD complexity features in {time.time()-complexityp} seconds, feature array shape: {psd_complexity_feature_df.shape}")
 
-    # # compute the graph featuares
-    # # print("Computing graph features")
-    # # gt = time.time()
-    # # if kwargs['gtdir'] is None:
-    # #     gtdir = os.path.join(newsavepath, 'graph_features')
-    # #     # gsearch_params =graph_params
-    # # else:
-    # #     gtdir = kwargs['gtdir']
-    # #     # gsearch_params ={**graph_params, **locd_params}
-    # # graph_feature_df = cgf.main(graph_params=graph_params, data_params=locd_params, channels=channels, save=kwargs['save'], savepath=gtdir)
-    # print("Computing graph features")
-    # gt = time.time()
-    # if 'all_metric_graphs_features.csv' in os.listdir(newsavepath):
-    #     graph_feature_df = pd.read_csv(os.path.join(newsavepath, 'all_metric_graphs_features.csv'), index_col=0)
-    # else:
-    #     graph_feature_df = cgf.main(graph_params=graph_params, data_params=locd_params, open_closed_dict=open_closed_dict, ocpath=open_closed_path, channels=channels, save=kwargs['save'])
-    #     if kwargs['save']:
-    #         graph_feature_df.to_csv(os.path.join(newsavepath, 'all_metric_graphs_features.csv'))
-        
+    # compute the network features
+    print("Computing network features")
+    networkt = time.time()
+    network_params = extract_network_params(**kwargs)
+    network_feature_df = cnf.main(network_params=network_params, data_params=locd_params, open_closed_dict=open_closed_dict, channels=channels, save=True, savepath=featurepath)
+    print(f"Finished computing network features in {time.time()-networkt} seconds, feature array shape: {network_feature_df.shape}")        
 
-    # print(f"Finished computing graph features in {time.time()-gt} seconds, feature array shape: {graph_feature_df.shape}")
-    # # # compute ecg features
-    # # print("Computing ECG features") # let's just do this elsewhere
-    # if kwargs['use_ecg']:
-    #     baseline_path =   '/shared/roy/mTBI/saved_processed_data/mission_connect/processed_ecg_data_features/'
-    #     ecg_baseline_file = os.path.join(baseline_path, 'ecg_baseline_12.6.23.csv')
-    #     ecg_closed_file = os.path.join(baseline_path, 'eyes_closed_12.6.23.csv')
-    #     ecg_open_file = os.path.join(baseline_path, 'eyes_open_12.6.23.csv')
-    #     ecg_baseline_df = pd.read_csv(ecg_baseline_file, index_col=0)
-    #     ecg_closed_df = pd.read_csv(ecg_closed_file, index_col=0)
-    #     ecg_open_df = pd.read_csv(ecg_open_file, index_col=0)
-    #     ecg_baseline_df.columns = [f'ecg_5min_{col}' for col in ecg_baseline_df.columns]
-    #     ecg_closed_df.columns = [f'ecg_closed_{col}' for col in ecg_closed_df.columns]
-    #     ecg_open_df.columns = [f'ecg_open_{col}' for col in ecg_open_df.columns]
-    #     ecg_df = pd.concat([ecg_baseline_df, ecg_closed_df, ecg_open_df], axis=1)
-    # else:
-    #     ecg_df = None
-
-        
-
-    # if kwargs['use_ps']:
     #     print("Computing Parameterized Spectra features")
     #     ps_params = extract_parameterized_spectra_params(**kwargs)
     #     ps_path = '/shared/roy/mTBI/mTBI_Classification/feature_csvs/param_spectra/'
@@ -183,6 +138,19 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     # else:
     #     parameterized_psd = None
 
+    ## ecg features
+    # if kwargs['use_ecg']:
+    # baseline_path =   '/shared/roy/mTBI/saved_processed_data/mission_connect/processed_ecg_data_features/'
+    # ecg_baseline_file = os.path.join(baseline_path, 'ecg_baseline_12.6.23.csv')
+    # ecg_closed_file = os.path.join(baseline_path, 'eyes_closed_12.6.23.csv')
+    # ecg_open_file = os.path.join(baseline_path, 'eyes_open_12.6.23.csv')
+    # ecg_baseline_df = pd.read_csv(ecg_baseline_file, index_col=0)
+    # ecg_closed_df = pd.read_csv(ecg_closed_file, index_col=0)
+    # ecg_open_df = pd.read_csv(ecg_open_file, index_col=0)
+    # ecg_baseline_df.columns = [f'ecg_5min_{col}' for col in ecg_baseline_df.columns]
+    # ecg_closed_df.columns = [f'ecg_closed_{col}' for col in ecg_closed_df.columns]
+    # ecg_open_df.columns = [f'ecg_open_{col}' for col in ecg_open_df.columns]
+    # ecg_df = pd.concat([ecg_baseline_df, ecg_closed_df, ecg_open_df], axis=1)
     # if kwargs['use_symptoms']:
     #     symptoms_df = epfs.process_symptoms(symptoms_only=kwargs['symptoms_only'])
     #     symptoms_df.columns = [f'symptoms_{col}' for col in symptoms_df.columns]
@@ -201,7 +169,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     #     'sef': sef_df,
     #     'complexity': complexity_feature_df,
     #     'psd_complexity': psd_complexity_feature_df,
-    #     'graph': graph_feature_df,
+    #     'network': network_feature_df,
     #     'parameterized_psd': parameterized_psd,
     #     'ecg': ecg_df,
     #     'symptoms': symptoms_df
@@ -233,9 +201,9 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     # else:
     #     full_feature_df = pd.concat([df for df in out_dfs.values() if df is not None], axis=1)
     #     # if use_regional:
-    #     #     full_feature_df = pd.concat([band_powers, band_ratios, merged_regional_psd_df, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, graph_feature_df], axis=1)
+    #     #     full_feature_df = pd.concat([band_powers, band_ratios, merged_regional_psd_df, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, network_feature_df], axis=1)
     #     # else:
-    #     #     full_feature_df = pd.concat([band_powers, band_ratios, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, graph_feature_df], axis=1)
+    #     #     full_feature_df = pd.concat([band_powers, band_ratios, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, network_feature_df], axis=1)
     #     print(f"Made full dataframe {full_feature_df.shape} in {time.time()-starttime} seconds")
         
     #     return full_feature_df
@@ -275,7 +243,7 @@ def extract_locd_params(**kwargs):
         'notch_width': kwargs['notch_width'],
         'num_subjs': kwargs['num_subjs'],
         'verbose': kwargs['verbose'],
-        'method': kwargs['method'],
+        'reference_method': kwargs['reference_method'],
         'reference_channels': kwargs['reference_channels'],
         'keep_refs': kwargs['keep_refs'],
         'bad_channels': kwargs['bad_channels'],
@@ -307,30 +275,13 @@ def extract_regional_power_params(**kwargs):
         }
         return params
 
-def extract_graph_params(**kwargs):
+def extract_network_params(**kwargs):
 
-    graph_params = {
-        'band_method': kwargs['graph_band_method'],
-        'n_divisions': kwargs['graph_n_divisions'],
-        'log_division': kwargs['graph_log_division'],
-        'custom_bands': kwargs['graph_custom_bands'],
-        'graph_methods': kwargs['graph_methods'],
-        'inverse_numerator': kwargs['graph_inverse_numerator'],
+    network_params = {
+        'band_method': kwargs['network_band_method'],
+        'network_methods': kwargs['network_methods'],
     }
-    return graph_params
-
-
-def _invert_graph_params(graph_params):
-    
-    invert_graph_params = {
-        'graph_band_method': graph_params['band_method'],
-        'graph_n_divisions': graph_params['n_divisions'],
-        'graph_log_division': graph_params['log_division'],
-        'graph_custom_bands': graph_params['custom_bands'],
-        'graph_methods': graph_params['graph_methods'],
-        'graph_inverse_numerator': graph_params['inverse_numerator'],
-    }
-    return invert_graph_params
+    return network_params
 
 def normalize_transform_dataset(transform_data_dict):
 
@@ -417,7 +368,7 @@ if __name__ == '__main__':
     parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
     parser.add_argument('--num_subjs', type=int, default=151)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--method', type=str, default='CSD')
+    parser.add_argument('--reference_method', type=str, default='CSD')
     parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
     parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
@@ -463,14 +414,9 @@ if __name__ == '__main__':
     parser.add_argument('--window_len', type=int, default=10, help="The window length for the complexity features")
     parser.add_argument('--overlap', type=float, default=1, help="The overlap for the complexity features")
 
-    ## graph params
-    parser.add_argument('--graph_band_method', type=str, default='standard', help="Possible options: 'standard', 'anton', 'buzsaki', 'linear_50', 'linear_100', 'linear_250'")
-    parser.add_argument('--graph_n_divisions', type=int, default=1, help="Number of divisions to make in the frequency band: 1,2,3,4,5 for all except the linear_50+bands")
-    parser.add_argument('--graph_log_division', action=argparse.BooleanOptionalAction, default=True, help="Whether to use log division for the frequency bands")
-    parser.add_argument('--graph_custom_bands', type=float, nargs='+', default=None, help="Custom bands to use for the graph features") # NEED UPDATING IF WANT TO USE, just here for completeness
-    parser.add_argument('--graph_methods', type=str, nargs='+', default=['coherence', 'mutual_information', 'spearman', 'pearson', 'plv', 'pli']) #  'plv', 'pli', 'inverse_distance' really only for the gnn modeling
-    parser.add_argument('--graph_inverse_numerator', type=float, default=1, help="The numerator for the inverse distance graph metric")
-    parser.add_argument('--gtdir', type=str, default='/scratch/ap60/mTBI/feature_csvs/graph_features/', help="The directory to load the graph features from")
+    ## network params
+    parser.add_argument('--network_band_method', type=str, default='custom', help="Possible options: 'standard', 'anton', 'buzsaki', 'linear_50', 'linear_100', 'linear_250'")
+    parser.add_argument('--network_methods', type=str, nargs='+', default=['coherence', 'mutual_information', 'spearman', 'pearson', 'plv', 'pli']) #  'plv', 'pli'
 
     ## parameterized spectra
     parser.add_argument('--use_ps', action=argparse.BooleanOptionalAction, default=True, help='Whether to use parameterized spectra features')

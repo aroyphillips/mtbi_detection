@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 
-def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, tables_folder='data/tables/'):
+def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], reference_method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, tables_folder='data/tables/'):
     """
     Given parameters, load the open closed data for all subjects
     Output:
@@ -44,7 +44,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         'notches': notches,
         'notch_width': notch_width,
         'num_subjs': num_subjs,
-        'method': method,
+        'reference_method': reference_method,
         'reference_channels': reference_channels,
         'keep_refs': keep_refs,
         'bad_channels': bad_channels,
@@ -74,6 +74,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         print(f"h_freq={params['h_freq']}")
         alt_params = params.copy()
 
+    du.clean_params_path(savepath)
     try_savepath, found_match = du.check_and_make_params_folder(savepath, params, skip_ui=True, make_new_paramdir=False)
     if not found_match:
         ecg_params = params.copy()
@@ -121,14 +122,14 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         ecg_locations = ld.get_ecg_channel_locations(subjs=good_subjs, tables_folder=tables_folder)
         ecg_channels_dict = {subj: ecg_locations[sdx] for sdx, subj in enumerate(good_subjs)}
         if filter_ecg:
-            ecg_free_dataset = load_ecg_free_open_closed_dict(bandpass_dataset, good_subjs, ecg_channels=ecg_locations, verbose=verbose)
+            ecg_free_dataset = load_ecg_free_open_closed_dict(bandpass_dataset, good_subjs, ecg_channels=ecg_locations, method=ecg_method, verbose=verbose)
         else:
             ecg_free_dataset = bandpass_dataset
         print("Cropping data...")
         cropped_dataset = load_open_closed_crops(ecg_free_dataset, verbose=verbose, annotations=annotations)
 
         if late_filter_ecg:
-            cropped_dataset = ecg_free_cropped_open_closed_dict(cropped_dataset, good_subjs, ecg_channels=ecg_locations, verbose=verbose)
+            cropped_dataset = ecg_free_cropped_open_closed_dict(cropped_dataset, good_subjs, ecg_channels=ecg_locations, method=ecg_method, verbose=verbose)
 
         common_channels = ld.find_common_channels_from_dict(dataset)
         print(f"Common channels: {common_channels}")
@@ -136,7 +137,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         print(f"Removing bad channels: {bad_channels}")
         common_channels = [channel for channel in common_channels if channel not in bad_channels]
         print("Rereferencing data...")
-        reref_dataset = load_rereferenced_dict(cropped_dataset, common_channels, method=method, verbose=verbose, reference_channels=reference_channels, n_jobs=n_jobs, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channels_dict=ecg_channels_dict)
+        reref_dataset = load_rereferenced_dict(cropped_dataset, common_channels, reference_method=reference_method, verbose=verbose, reference_channels=reference_channels, n_jobs=n_jobs, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channels_dict=ecg_channels_dict)
         print("Done loading open closed data in ", time.time()-starttime)
 
         pathdict = {subj: {'open': [], 'closed': []} for subj in good_subjs}
@@ -167,17 +168,17 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
     pathdict = {str(subj): pathdict[subj] for subj in pathdict.keys()}
     return pathdict
     
-def _reference_single_subj(raws, common_channels, method='ipsilateral', keep_refs=False, reference_channels=['A1', 'A2'], include_ecg=False, ecg_channel=None):
+def _reference_single_subj(raws, common_channels, reference_method='ipsilateral', keep_refs=False, reference_channels=['A1', 'A2'], include_ecg=False, ecg_channel=None):
     """
     Input: list of raws
     Output: list of rereferenced raws
     """
     reref_raws = []
     for raw in raws:
-        reref_raws.append(rd.rereference_raw(raw, common_channels, reference_channels=reference_channels, method=method, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channel=ecg_channel))
+        reref_raws.append(rd.rereference_raw(raw, common_channels, reference_channels=reference_channels, method=reference_method, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channel=ecg_channel))
     return reref_raws
 
-def load_rereferenced_dict(dataset, common_channels, method='ipsilateral', keep_refs=False, reference_channels=['A1', 'A2'], n_jobs=1, verbose=False, include_ecg=False, ecg_channels_dict=None):
+def load_rereferenced_dict(dataset, common_channels, reference_method='ipsilateral', keep_refs=False, reference_channels=['A1', 'A2'], n_jobs=1, verbose=False, include_ecg=False, ecg_channels_dict=None):
     """
     Input dataset structure: {subj: {'open': [], 'closed': []}}
     Output dataset structure: {subj: {'open': [], 'closed': []}}
@@ -195,12 +196,12 @@ def load_rereferenced_dict(dataset, common_channels, method='ipsilateral', keep_
             for inner_key in inner_keys:
                 raws = dataset[subj][inner_key]
                 for raw in raws:
-                    reref_dataset[subj][inner_key].append(rd.rereference_raw(raw, common_channels, reference_channels=reference_channels, method=method, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channel=ecg_channels_dict[subj]))
+                    reref_dataset[subj][inner_key].append(rd.rereference_raw(raw, common_channels, reference_channels=reference_channels, method=reference_method, keep_refs=keep_refs, include_ecg=include_ecg, ecg_channel=ecg_channels_dict[subj]))
                     if verbose:
                         print("Time to rereference: {}".format(time.time()-starttime))
                         times.append(time.time()-starttime)
     else:
-        reref_dataset = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(_reference_single_subj)(dataset[subj][inner_key], common_channels, method=method, keep_refs=keep_refs, reference_channels=reference_channels, include_ecg=include_ecg, ecg_channel=ecg_channels_dict[subj]) for subj in dataset.keys() for inner_key in inner_keys)
+        reref_dataset = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(_reference_single_subj)(dataset[subj][inner_key], common_channels, reference_method=reference_method, keep_refs=keep_refs, reference_channels=reference_channels, include_ecg=include_ecg, ecg_channel=ecg_channels_dict[subj]) for subj in dataset.keys() for inner_key in inner_keys)
         reref_dataset = {subj: {inner_key: reref_dataset[idx*len(inner_keys)+idx2] for idx2, inner_key in enumerate(inner_keys)} for idx, subj in enumerate(dataset.keys())}
 
     if verbose:
@@ -399,7 +400,7 @@ if __name__ == "__main__":
     parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
     parser.add_argument('--num_subjs', type=int, default=151)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--method', type=str, default='CSD')
+    parser.add_argument('--reference_method', type=str, default='CSD')
     parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
     parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])

@@ -25,7 +25,7 @@ def main(locd_params = {
         'notch_width': [2, 1, 0.5, 0.25],
         'num_subjs': 151,
         'verbose': True,
-        'method': 'CSD',
+        'reference_method': 'CSD',
         'reference_channels': ['A1', 'A2'],
         'filter_ecg': True,
         'keep_refs': False,
@@ -465,7 +465,7 @@ def extract_locd_params(**kwargs):
         'notch_width': kwargs['notch_width'],
         'num_subjs': kwargs['num_subjs'],
         'verbose': kwargs['verbose'],
-        'method': kwargs['method'],
+        'reference_method': kwargs['reference_method'],
         'reference_channels': kwargs['reference_channels'],
         'keep_refs': kwargs['keep_refs'],
         'bad_channels': kwargs['bad_channels'],
@@ -489,7 +489,7 @@ if __name__=='__main__':
     parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
     parser.add_argument('--num_subjs', type=int, default=3)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('--method', type=str, default='CSD')
+    parser.add_argument('--reference_method', type=str, default='CSD')
     parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
     parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
