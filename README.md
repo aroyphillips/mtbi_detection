@@ -84,6 +84,7 @@ L3 cache:            32768K
 NUMA node0 CPU(s):   0-31,64-95
 NUMA node1 CPU(s):   32-63,96-127
 
-Note: we are in the process of refactoring the codebase so that it may run on other machines. Please submit a Github Issue or contact Roy Phillips (ap60@rice.edu) with specific issues.
+
 --------
+Note: we are in the process of refactoring the codebase so that it may run on other machines. Please submit a Github Issue or contact Roy Phillips (ap60@rice.edu) with specific issues.
 
