@@ -24,7 +24,6 @@ def main(locd_params = {
         'notches': [60, 120, 180, 240],
         'notch_width': [2, 1, 0.5, 0.25],
         'num_subjs': 151,
-        'verbose': True,
         'reference_method': 'CSD',
         'reference_channels': ['A1', 'A2'],
         'filter_ecg': True,
@@ -35,7 +34,7 @@ def main(locd_params = {
         'ecg_thresh': 'auto',
         'ecg_method': 'correlation'
     }, interpolate_spectrum=1000, freq_interp_method='linear',bandwidth=1, which_segment='avg',
-    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH):
+    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH, verbose=True):
     # define loading parameters
     print("Loading parameters: {}".format(locd_params))
     params = extract_locd_params(**locd_params)
@@ -60,7 +59,7 @@ def main(locd_params = {
         output_dict = load_all_transform_data_paths(savepath=savepath, subjs=None, as_paths=as_paths)
     else:
         # load the data from load_open_closed_dict
-        open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=locd_savepath)
+        open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=locd_savepath, verbose=verbose)
         # load the psd dataset
         mjobs=1
         # mjobs = max((os.cpu_count()-2)//n_jobs//4, 1) # jobs to use for multitaper
@@ -348,14 +347,11 @@ def load_all_transform_data_paths(savepath, subjs=None, which_segment='avg', as_
     return output_dict
 
 
-def load_single_subject_transform_data(mt_fullpath):
+def load_single_subject_transform_data(mt_fullpath, inner_keys=['open_power', 'closed_power', 'open_spectrum', 'closed_spectrum', 'open_weights', 'closed_weights', 'open_basefreqs', 'closed_basefreqs']):
     """
     Given a savepath, return a dictionary of the form 
-    {subj: {open_power: _, closed_power: _, open_spectrum: _, closed_spectrum: _, open_weights: _, closed_weights: _, open_basefreqs: _, closed_basefreqs: _}}}
-    OR 
     {open_power: _, closed_power: _, open_spectrum: _, closed_spectrum: _, open_weights: _, closed_weights: _, open_basefreqs: _, closed_basefreqs: _}
     """
-    inner_keys = ['open_power', 'closed_power', 'open_spectrum', 'closed_spectrum', 'open_weights', 'closed_weights', 'open_basefreqs', 'closed_basefreqs']
 
     assert os.path.exists(mt_fullpath), f"Path {mt_fullpath} does not exist"
     subj_data = {}
@@ -464,7 +460,6 @@ def extract_locd_params(**kwargs):
         'notches': kwargs['notches'],
         'notch_width': kwargs['notch_width'],
         'num_subjs': kwargs['num_subjs'],
-        'verbose': kwargs['verbose'],
         'reference_method': kwargs['reference_method'],
         'reference_channels': kwargs['reference_channels'],
         'keep_refs': kwargs['keep_refs'],

@@ -18,7 +18,7 @@ LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
 
 ### Feature Extraction code
-def get_entropy_features_from_epochs(data, fs=500, metrics = ['perm_entropy', 'svd_entropy', 'spectral_entropy', 'app_entropy', 'sample_entropy']) -> NDArray:
+def get_entropy_features_from_epochs(data, fs=500, metrics = ['perm_entropy', 'svd_entropy', 'app_entropy', 'sample_entropy']) -> NDArray:
     """
     Computes the entropy features for a given data matrix using the antropy package, where each row is a channel
     Inputs:
@@ -39,7 +39,7 @@ def get_entropy_features_from_epochs(data, fs=500, metrics = ['perm_entropy', 's
                 elif entropy == 'svd_entropy':
                     entropies_array[channel, epoch, edx] = ant.svd_entropy(data[channel, epoch, :], normalize=True)
                 elif entropy == 'spectral_entropy':
-                    entropies_array[channel, epoch, edx] = ant.spectral_entropy(data[channel, epoch, :], sf=fs, method='welch', normalize=True, nperseg=2048) # this is not the best way to compute this, better to do it but let's just use it for now and compute entropy on my multitaper spectrum later
+                    entropies_array[channel, epoch, edx] = ant.spectral_entropy(data[channel, epoch, :], sf=fs, method='welch', normalize=True, nperseg=512) # this is not the best way to compute this, so we compute entropy on my multitaper spectrum later
                 elif entropy == 'app_entropy':
                     entropies_array[channel, epoch, edx] = ant.app_entropy(data[channel, epoch, :])
                 elif entropy == 'sample_entropy':
@@ -49,7 +49,7 @@ def get_entropy_features_from_epochs(data, fs=500, metrics = ['perm_entropy', 's
                 
     return entropies_array
 
-def get_entropy_features(data, channels=None, fs=500, metrics = ['perm_entropy', 'svd_entropy', 'spectral_entropy', 'app_entropy', 'sample_entropy']) -> NDArray:
+def get_entropy_features(data, channels=None, fs=500, metrics = ['perm_entropy', 'svd_entropy', 'app_entropy', 'sample_entropy']) -> NDArray:
     """
     Computes the entropy features for a given data matrix using the antropy package, where each row is a channel
     Inputs:
@@ -71,7 +71,7 @@ def get_entropy_features(data, channels=None, fs=500, metrics = ['perm_entropy',
             elif entropy == 'svd_entropy':
                 entropies_array[channel, edx] = ant.svd_entropy(data[channel, :], normalize=True)
             elif entropy == 'spectral_entropy':
-                entropies_array[channel, edx] = ant.spectral_entropy(data[channel, :], sf=fs, method='welch', normalize=True, nperseg=2048) # this is not the best way to compute this, better to do it but let's just use it for now and compute entropy on my multitaper spectrum later
+                entropies_array[channel, edx] = ant.spectral_entropy(data[channel, :], sf=fs, method='welch', normalize=True, nperseg=2048) # this is not the best way to compute this, better to do it but let's just use it for now and compute entropy on my multitaper spectrum
             elif entropy == 'app_entropy':
                 entropies_array[channel, edx] = ant.app_entropy(data[channel, :])
             elif entropy == 'sample_entropy':
@@ -473,7 +473,7 @@ def get_distribution_features_from_epochs(feature_func, epochs_dict, feature_met
     return open_feature_distribution_features, closed_feature_distribution_features
 
 
-def reshape_feature_distribution_array(distribution_features, subjs, channels, distribution_metrics=['mean', 'std', 'median', 'iqr', 'skewness', 'kurtosis'], feature_metrics=['perm_entropy', 'svd_entropy', 'spectral_entropy', 'app_entropy', 'sample_entropy'], verbosity=0):
+def reshape_feature_distribution_array(distribution_features, subjs, channels, distribution_metrics=['mean', 'std', 'median', 'iqr', 'skewness', 'kurtosis'], feature_metrics=['perm_entropy', 'svd_entropy','app_entropy', 'sample_entropy'], verbosity=0):
     assert distribution_features.shape[0] == len(subjs)
     assert distribution_features.shape[1] == len(channels)
     assert distribution_features.shape[2] == len(distribution_metrics)
@@ -563,7 +563,7 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
         if verbosity > 0:
             print(f"Computing entropy features")
             entropytime = time.time()
-        entropy_metrics = ['perm_entropy', 'svd_entropy', 'spectral_entropy', 'app_entropy', 'sample_entropy']
+        entropy_metrics = ['perm_entropy', 'svd_entropy', 'app_entropy', 'sample_entropy']
         open_entropy_distribution_features, closed_entropy_distribution_features = get_distribution_features_from_epochs(get_entropy_features_from_epochs, epochs_dict, entropy_metrics, distribution_metrics, subjs, states=states, epoch_axis=1, chan_axis=0, verbosity=verbosity, channels=channels)
         if verbosity > 0:
             print(f"Finished computing entropy features in {time.time() - entropytime} seconds")

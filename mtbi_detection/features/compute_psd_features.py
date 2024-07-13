@@ -6,7 +6,6 @@ import os
 import json
 import scipy.stats as stats
 import mtbi_detection.data.data_utils as du
-import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.data.transform_data as td
 import mtbi_detection.features.feature_utils as fu
 
@@ -48,7 +47,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
     powersavepath, found_match = du.check_and_make_params_folder(power_path, power_params)
     if found_match:
         power_feature_df, found_match = load_power_features(powersavepath, ratio=ratio)
-        assert set(power_feature_df.index) == set(fu.select_subjects_from_dataframe(power_feature_df, choose_subjs, internal_folder).index), "Index mismatch"
+        if found_match:
+            assert set(power_feature_df.index) == set(fu.select_subjects_from_dataframe(power_feature_df, choose_subjs, internal_folder).index), "Index mismatch"
     if not found_match:
         unraveled_mtd = td.unravel_multitaper_dataset(transform_data_dict['subj_data'])
         X_open = np.stack(unraveled_mtd['avg']['open_power'])
