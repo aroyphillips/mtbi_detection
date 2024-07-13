@@ -51,22 +51,45 @@ RESULTS_SAVEPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'results')
 
 # set the random seed
 np.random.seed(88)
-def main(model_name='GaussianNB', which_features=['ecg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
-         search_method='bayes', n_points=1, n_iterations=10, results_savepath=RESULTS_SAVEPATH, featurepath=FEATUREPATH,
+def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
+         search_method='bayes', n_points=1, n_iterations=100, results_savepath=RESULTS_SAVEPATH, featurepath=FEATUREPATH,
          verbosity=10,  n_fs_repeats=2, n_hyper_repeats=2, internal_folder='data/internal', **kwargs):
     """
     Trains the baselearner specified by model_name on the features specified by which_features
-    Inputs:
-        - 
-    
+ 
+    Inputs
+        - model_name (str): The name of the model to train. Default is 'GaussianNB'.
+        - which_features (list): List of features to use for training. Default is ['ecg'].
+        - wrapper_method (str): The feature selection method to use. Default is 'recursive'.
+        - n_jobs (int): Number of parallel jobs to run. Default is 10.
+        - n_hyper_cv (int): Number of cross-validation folds for hyperparameter tuning. Default is 5.
+        - n_fs_cv (int): Number of cross-validation folds for feature selection. Default is 3.
+        - step (int): Step size for the feature selection process. Default is 5.
+        - search_method (str): Method to use for hyperparameter search. Default is 'bayes'.
+        - n_points (int): Number of points to sample in each iteration of the search method. Default is 1.
+        - n_iterations (int): Number of iterations for the search method. Default is 10.
+        - results_savepath (str): Path to save the results. Default is RESULTS_SAVEPATH.
+        - featurepath (str): Path to the feature data. Default is FEATUREPATH.
+        - verbosity (int): Level of verbosity for logging. Default is 10.
+        - n_fs_repeats (int): Number of repeats for feature selection. Default is 2.
+        - n_hyper_repeats (int): Number of repeats for hyperparameter tuning. Default is 2.
+        - internal_folder (str): Path to the internal folder for data storage. Default is 'data/internal'.
+        - **kwargs: keyword arguments for compute_all_features.py
+
+    Returns:
+        None. Trains the model and saves the results to the specified path.
     """
     assert wrapper_method in ['none', 'recursive', 'nofsatall'], f"Wrapper method {wrapper_method} not recognized, must be 'none', 'recursive', or 'nofsatall'"
     assert search_method in ['grid', 'random', 'bayes'], f"Search method {search_method} not recognized, must be 'grid', 'random', or 'bayes'"
     assert model_name in ['GaussianNB', 'LogisticRegression', 'AdaBoost', 'KNeighborsClassifier', 'RandomForestClassifier', 'XGBClassifier', 'all'], f"Model name {model_name} not recognized"
     
-    # save the best model
+    # save the best modelß
+    results_savepath = os.path.join(results_savepath, 'base_learners')
     du.clean_params_path(results_savepath)
-    savepath, found_match = du.check_and_make_params_folder(results_savepath)
+    caf_params = caf.extract_all_params(**kwargs)
+    all_params = {**caf_params, 'which_feaures': which_features}
+    savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params)
+
     totaltime = time.time()
     
     # mattews correlation coefficient
@@ -123,7 +146,7 @@ def main(model_name='GaussianNB', which_features=['ecg'], wrapper_method='recurs
     trainfeaturesavepath = os.path.join(savepath, f"{'-'.join(which_features)}_X_train.csv")
     ivalfeaturesavepath = os.path.join(savepath, f"{'-'.join(which_features)}_X_ival.csv")
     holdoutfeaturesavepath = os.path.join(savepath, f"{'-'.join(which_features)}_X_holdout.csv")
-    if holdoutfeaturesavepath in glob.glob(savepath):
+    if found_match:
         assert pd.read_csv(trainfeaturesavepath, index_col=0).equals(X_train)
         assert pd.read_csv(ivalfeaturesavepath, index_col=0).equals(X_ival)
         assert pd.read_csv(holdoutfeaturesavepath, index_col=0).equals(X_holdout)
@@ -514,53 +537,6 @@ def process_feature_df(which_features, feature_subset_dfs):
                 raise ValueError(f"Symptom features not found in {feature_subset_dfs.keys()}")
         col_mapping['eeg'] = [col for col in all_eeg_feature_df.columns if col not in feature_subset_dfs['ecg'].columns and col not in feature_subset_dfs['symptoms'].columns]
     return all_eeg_feature_df, col_mapping
-        
-def extract_data_kwargs(vars_args):
-    data_kwargs = {
-        'savepath': vars_args['savepath'],
-        'l_freq': vars_args['l_freq'],
-        'h_freq': vars_args['h_freq'],
-        'fs_baseline': vars_args['fs_baseline'],
-        'order': vars_args['order'],
-        'notches': vars_args['notches'],
-        'notch_width': vars_args['notch_width'],
-        'num_subjs': vars_args['num_subjs'],
-        'verbose': vars_args['verbose'],
-        'method': vars_args['method'],
-        'reference_channels': vars_args['reference_channels'],
-        'keep_refs': vars_args['keep_refs'],
-        'bad_channels': vars_args['bad_channels'],
-        'filter_ecg': vars_args['filter_ecg'],
-        'late_filter_ecg': vars_args['late_filter_ecg'] if 'late_filter_ecg' in vars_args.keys() else False,
-        'ecg_l_freq': vars_args['ecg_l_freq'],
-        'ecg_h_freq': vars_args['ecg_h_freq'],
-        'ecg_thresh': vars_args['ecg_thresh'],
-        'ecg_method': vars_args['ecg_method'],
-        'downsample_bispectrum': vars_args['downsample_bispectrum'],
-        'compute_bispectrum': vars_args['compute_bispectrum'],
-        'save': vars_args['save'],
-        'band_method': vars_args['band_method'],
-        'n_divisions': vars_args['n_divisions'],
-        'log_division': vars_args['log_division'],
-        'bin_method': vars_args['bin_method'],
-        'when_log': vars_args['when_log'],
-        'ratio_band_method': vars_args['ratio_band_method'],
-        'ratio_n_divisions': vars_args['ratio_n_divisions'],
-        'ratio_log_division': vars_args['ratio_log_division'],
-        'ratio_bin_method': vars_args['ratio_bin_method'],
-        'power_increments': vars_args['power_increments'],
-        'num_powers': vars_args['num_powers'],
-        'window_len': vars_args['window_len'],
-        'overlap': vars_args['overlap'],
-        'verbosity': vars_args['verbosity'],
-        'graph_band_method': vars_args['graph_band_method'],
-        'graph_n_divisions': vars_args['graph_n_divisions'],
-        'graph_log_division': vars_args['graph_log_division'],
-        'graph_custom_bands': vars_args['graph_custom_bands'],
-        'graph_methods': vars_args['graph_methods'],
-        'graph_inverse_numerator': vars_args['graph_inverse_numerator']
-    }
-    return data_kwargs
 
 def extract_diff_dict(big_dict, sub_dict):
     """
@@ -676,12 +652,8 @@ if __name__ == '__main__':
     
     pprint.pprint(args)
     # ask the user to continue
-    uin = 'y' # input("Continue? (y/n): ")
-    data_args = extract_data_kwargs(vars(args))
+    data_args = caf.extract_all_params(**vars(args))
     main_args = extract_diff_dict(vars(args), data_args)
-    if uin == 'y':
-        main(**main_args, **data_args)
-        print("Finished running with these inputs", main_args, data_args)
-    else:
-        print("Exiting...")
-        exit()
+
+    main(**main_args, **data_args)
+    print("Finished running with these inputs", main_args, data_args)

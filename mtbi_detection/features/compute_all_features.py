@@ -279,6 +279,19 @@ def extract_network_params(**kwargs):
     return network_params
 
 def extract_all_params(**kwargs):
+    locd_params = extract_locd_params(**kwargs)
+    td_params = extract_transform_params(**kwargs)
+    psd_params = extract_power_params(**kwargs)
+    maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method'], 'choose_subjs': kwargs['choose_subjs']}
+    sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method'], 'choose_subjs': kwargs['choose_subjs']}
+    complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': kwargs['choose_subjs']}
+    network_params = extract_network_params(**kwargs)
+    param_spectra_params = extract_parameterized_spectra_params(**kwargs, choose_subjs=kwargs['choose_subjs'])
+    all_params = {}
+    for param_set in [locd_params, td_params, psd_params, maximal_power_params, sef_params, complexity_params, network_params, param_spectra_params]:
+        for key, val in param_set.items():
+            all_params[key] = val
+    return all_params
     
 def normalize_transform_dataset(transform_data_dict):
 
