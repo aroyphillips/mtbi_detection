@@ -18,7 +18,7 @@ import mtbi_detection.features.compute_spectral_edge_frequencies as csef
 import mtbi_detection.features.compute_complexity_features as ccf
 import mtbi_detection.features.compute_psd_complexity_features as cpcf
 import mtbi_detection.features.compute_network_features as cnf
-# import src.features.parameterize_spectra as psf
+import mtbi_detection.features.compute_parameterized_spectral_features as cpsf
 # import src.models.estimate_probabilities_from_symptoms as epfs
 
 
@@ -52,7 +52,7 @@ roi_dict = {
     'Full': CHANNELS
 }
 
-def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_folder='data/internal/', use_regional=False, return_separate=False, remove_noise=True, choose_subjs='train', **kwargs):
+def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_folder='data/internal/', use_regional=False, use_ecg=False, use_symptoms=False, return_separate=False, choose_subjs='train', **kwargs):
     
     if open_closed_path[-1] == '/':
         base_savepath = open_closed_path[:-1]
@@ -123,20 +123,15 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing network features")
     networkt = time.time()
     network_params = extract_network_params(**kwargs)
-    network_feature_df = cnf.main(network_params=network_params, data_params=locd_params, open_closed_dict=open_closed_dict, channels=channels, save=True, savepath=featurepath)
+    network_feature_df = cnf.main(network_params, locd_params, channels, verbosity=kwargs['verbosity'], save=True, featurepath=featurepath, choose_subjs=choose_subjs, internal_folder=internal_folder)
     print(f"Finished computing network features in {time.time()-networkt} seconds, feature array shape: {network_feature_df.shape}")        
 
-    #     print("Computing Parameterized Spectra features")
-    #     ps_params = extract_parameterized_spectra_params(**kwargs)
-    #     ps_path = '/shared/roy/mTBI/mTBI_Classification/feature_csvs/param_spectra/'
-    #     if os.path.exists('/scratch/ap60/mTBI/shared_copies/feature_csvs/param_spectra/'):
-    #         ps_path = '/scratch/ap60/mTBI/shared_copies/feature_csvs/param_spectra/'
-    #     parameterized_psd = psf.main(savepath=ps_path, base_folder=base_folder, **ps_params)
-    #     if remove_noise:
-    #         parameterized_psd = parameterized_psd[[col for col in parameterized_psd.columns if 'oise' not in col]]
-    #     parameterized_psd.columns = [f'parameterized_{col}' for col in parameterized_psd.columns]
-    # else:
-    #     parameterized_psd = None
+    # Parameterized PSD features
+    print(f"Computing Parameterized Spectra features")
+    param_spectra_params = extract_parameterized_spectra_params(**kwargs, choose_subjs=choose_subjs)
+    spectral_features_df = cpsf.main(locd_params, td_params, open_closed_path=open_closed_path, featurepath=featurepath, internal_folder=internal_folder, remove_noise=True, **param_spectra_params)
+    print(f"Finished computing parameterized spectra features in {time.time()-networkt} seconds, feature array shape: {spectral_features_df.shape}")
+
 
     ## ecg features
     # if kwargs['use_ecg']:
@@ -283,6 +278,8 @@ def extract_network_params(**kwargs):
     }
     return network_params
 
+def extract_all_params(**kwargs):
+    
 def normalize_transform_dataset(transform_data_dict):
 
 
@@ -343,17 +340,17 @@ def check_if_same_psd_method(**kwargs):
        
 def extract_parameterized_spectra_params(**kwargs):
     params={
-        'bands': kwargs['ps_bands'],
-        'max_n_peaks': kwargs['max_n_peaks'],
-        'min_peak_height': kwargs['min_peak_height'],
-        'peak_threshold': kwargs['peak_threshold'],
+        'band_basis': kwargs['ps_band_basis'],
         'aperiodic_mode': kwargs['aperiodic_mode'],
-        'n_division': kwargs['ps_n_division'],
-        'log_freqs': kwargs['ps_log_freqs'],
-        'prominence': kwargs['prominence'],
-        'loadpath': kwargs['ps_loadpath'],
-        'load_from': kwargs['load_from'],
-        'load_to': kwargs['load_to']
+        'log_freqs': True,
+        'choose_subjs': 'train',
+        'l_freq': kwargs['l_freq'],
+        'h_freq': kwargs['h_freq'],
+        'fs_baseline': kwargs['fs_baseline'],
+        'choose_subjs': kwargs['choose_subjs'],
+        'n_jobs': kwargs['n_jobs'],
+        'num_load_subjs': 151,
+        'random_load': False
     }
     return params
 if __name__ == '__main__':
@@ -419,18 +416,8 @@ if __name__ == '__main__':
     parser.add_argument('--network_methods', type=str, nargs='+', default=['coherence', 'mutual_information', 'spearman', 'pearson', 'plv', 'pli']) #  'plv', 'pli'
 
     ## parameterized spectra
-    parser.add_argument('--use_ps', action=argparse.BooleanOptionalAction, default=True, help='Whether to use parameterized spectra features')
-    parser.add_argument('--ps_savepath', type=str, default='/shared/roy/mTBI/mTBI_Classification/feature_csvs/param_spectra/', help='Path to save the data to')
-    parser.add_argument('--ps_bands', type=str, default='mine', help='Bands to fit the gaussians to, e.g. [(0, 4), (5, 10)]')
-    parser.add_argument('--max_n_peaks', type=int, default=5, help='Maximum number of peaks to fit')
-    parser.add_argument('--min_peak_height', type=float, default=0.0, help='Minimum peak height to fit')
-    parser.add_argument('--peak_threshold', type=float, default=2.0, help='Peak threshold to fit')
+    parser.add_argument('--ps_band_basis', type=str, default='custom', help='Bands to fit the gaussians to, e.g. [(0, 4), (5, 10)]')
     parser.add_argument('--aperiodic_mode', type=str, default='knee', help='Aperiodic mode to fit')
-    parser.add_argument('--ps_n_division', type=int, default=1, help='Number of divisions to fit')
-    parser.add_argument('--ps_log_freqs', action=argparse.BooleanOptionalAction, default=True, help='Whether to log (base e) the frequencies')
-    parser.add_argument('--prominence', type=float, default=0.5, help='Prominence to fit')
-    parser.add_argument('--ps_loadpath', type=str, default='/shared/roy/mTBI/data_transforms/loaded_transform_data/params/params5/', help='Path to load the data from') # also at scratch params7 # no pad many data
-
 
     ## ecg features
     parser.add_argument('--use_ecg', action=argparse.BooleanOptionalAction, default=False, help='Whether to use ecg features')

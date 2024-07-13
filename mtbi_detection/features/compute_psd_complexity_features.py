@@ -107,8 +107,8 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
     pcom_savepath, found_match = du.check_and_make_params_folder(savepath, all_params)
     savefilename = os.path.join(pcom_savepath, 'psd_complexity_features.csv')
     if found_match:
-        complexity_feature_df = pd.read_csv(pcom_savepath, index_col=0)
-        assert set(complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(complexity_feature_df, choose_subjs, internal_folder=internal_folder))
+        complexity_feature_df = pd.read_csv(savefilename, index_col=0)
+        assert set(complexity_feature_df.index) == set(fu.select_subjects_from_dataframe(complexity_feature_df, choose_subjs, internal_folder=internal_folder).index)
     else:
         loadtime = time.time()
         transform_data_dict = td.main(locd_params=open_closed_params, locd_savepath=open_closed_path, n_jobs=1, as_paths=False, **transform_data_params)

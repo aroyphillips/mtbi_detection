@@ -13,7 +13,7 @@ import numpy as np
 import path.to.refactored_parameterized_spectra as bandparams
 power_spectrum = np.load('example_spectrum.npy') # some power spectrum in linear space
 freqs = np.load('example_freqs.npy')
-param_spectra = bandparams.ParamSpectra(bands='standard',  max_n_peaks=6, log_freqs=True, n_division=1, l_freq=0.3, h_freq=250, prominence=0.5, linenoise=60, aperiodic_mode='knee', verbose=1)
+param_spectra = bandparams.ParamSpectra(band_basis='standard',  max_n_peaks=6, log_freqs=True,  l_freq=0.3, h_freq=250, prominence=0.5, linenoise=60, aperiodic_mode='knee', verbose=1)
 param_spectra.fit(freqs, power_spectrum)
 print(param_spectra.get_params_out())
 plt.figure()
@@ -41,9 +41,11 @@ import time
 import argparse
 import fooof
 from joblib import Parallel, delayed
+from numpy.typing import ArrayLike
 
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.data.data_utils as du
+import mtbi_detection.data.transform_data as td
 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
@@ -73,7 +75,7 @@ class NoModelError(SpecParamError):
 
 class ParamSpectra():
     # implement FOOOF but allow for predefined bandwindows
-    def __init__(self, band_basis='standard',  max_n_peaks=6, log_freqs=True, n_division=1, l_freq=0.3, h_freq=250, prominence=0.5, linenoise=60, aperiodic_mode='knee', verbose=1):
+    def __init__(self, band_basis='standard',  max_n_peaks=6, log_freqs=True,  l_freq=0.3, h_freq=250, prominence=0.5, linenoise=60, aperiodic_mode='knee', verbose=1):
         """Model a power spectrum as a combination of aperiodic and periodic components.
 
         WARNING: frequency and power values inputs must be in linear space.
@@ -84,13 +86,11 @@ class ParamSpectra():
         Parameters
         ----------
         band_basis : str or list of [float, float] pairs, optional, default: 'standard'.
-            Possible options (see feature_utils.make_bands( for implementation details): 'custom' 'standard', 'log-standard', 'linear', 'log10'
+            Possible options (see feature_utils.make_bands( for implementation details): 'custom' 'standard', 'log-standard', 'linear', 'log10', 'custom_low'
         max_n_peaks : int, optional, default: 6, only used if bands is a specified as "log" or "linear"
             Maximum number of peaks to fit.
         log_freqs : bool, optional, default: True
             Whether or not to convert the input frequencies into natural log space.
-        n_division : int, optional, default: 1
-            Number of divisions to split each frequency band into.
         aperiodic_mode : {'fixed', 'knee'}
             Which approach to take for fitting the aperiodic component.
        
@@ -162,13 +162,12 @@ class ParamSpectra():
         self.aperiodic_mode = aperiodic_mode
         self.verbose = verbose
         self.log_freqs = log_freqs
-        self.n_division = n_division
         self.linenoise = linenoise
         self.prominence = prominence
         self.max_n_peaks = max_n_peaks
 
         
-        self.bands = fu.make_bands(band_basis, min_freq=l_freq, fs=h_freq*2, n_division=n_division)
+        self.bands = fu.make_bands(band_basis, min_freq=l_freq, fs=h_freq*2)
 
         # drop bands that are above or below the frequency range
         self.bands = [band for band in self.bands if band[0] < h_freq and band[1] > l_freq]
@@ -1058,14 +1057,21 @@ def return_modeled_spectrum(freqs, ap_params, gaus_params, bands):
     peak_vals = constrained_sum_of_gaussians(freqs, [(0, 4), (5, 10)], *gaus_params)
     return ap_vals + peak_vals
 
-def get_subjs_paths(loadpath, num_load_subjs=None, random_load=True):
-
-    # load the mt data (smartly to minimize memory usage)
-    subjs = os.listdir(loadpath)
+def select_datapathdict(datapathdict, num_load_subjs=None, random_load=True, which_psd_segment='avg'):
+    """
+    Given a dictionary of paths to npz files structured as {subj:{'avg': path}} (output of transform_data.main()), select a subset of the subjects to load
+    Args:
+        datapathdict (dict): Dictionary of paths to npz files
+        num_load_subjs (int): The number of subjects to load
+        random_load (bool): Whether to randomly select the subjects
+        which_psd_segment (str): Which segment of the PSD to load ['avg', 'first', 'second']
+    Returns:
+        new_datapathdict (dict): The new datapathdict with only the selected subjects
+    """
+    subjs = [key for key in datapathdict.keys() if key.isnumeric()]
+    non_subjs = [key for key in datapathdict.keys() if not key.isnumeric()]
     if len(subjs) == 0:
-        raise ValueError(f"Loadpath {loadpath} is empty")
-
-    subjs = [s for s in subjs if s.isnumeric()]
+        raise ValueError(f"No subjects found in {datapathdict}")
 
     if num_load_subjs is not None:
         if random_load:
@@ -1074,13 +1080,28 @@ def get_subjs_paths(loadpath, num_load_subjs=None, random_load=True):
             subjs = subjs[:num_load_subjs]
 
     assert len(subjs) > 0, f"Number of subjects {len(subjs)} is 0"
-    return subjs
+    new_datapathdict = {subj: datapathdict[subj][which_psd_segment] for subj in subjs}
+    for key in non_subjs:
+        new_datapathdict[key] = datapathdict[key][which_psd_segment]
+    return new_datapathdict
 
-def get_nan_params(band_basis='standard', max_n_peaks=5, min_peak_height=0.0, peak_threshold=2.0, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250, n_division=1, log_freqs=False, verbose=0):
+def get_nan_params(band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', l_freq=0.3, h_freq=250, verbose=0, **kwargs):
+    """
+    Given the parameters used to fit the power spectrum, return a dictionary of nan parameters 
+    (useful for when the fitting fails)
+    Args:
+        band_basis (str): The basis for the bands
+        max_n_peaks (int): The maximum number of peaks to fit
+        aperiodic_mode (str): The mode of the aperiodic component
+        l_freq (float): The lowest frequency to fit
+        verbose (int): The verbosity level
+    Returns:
+        params_out (dict): The dictionary of nan parameters {'aperiodic_params': np.array, 'gaussian_params': np.array, 'noise_pks': np.array, 'noise_wids': np.array, 'peak_params': np.array, 'r_squared': float, 'error': float}
+    """
     if verbose > 0:
         print(f"Creating nan params")
     band_basis = _convert_band_basis(band_basis, max_n_peaks)
-    band_ranges = fu.make_bands(band_basis, l_freq=l_freq, fs=h_freq*2, n_division=n_division)
+    band_ranges = fu.make_bands(band_basis, min_freq=l_freq, fs=h_freq*2)
     n_bands = len(band_ranges)
 
 
@@ -1108,65 +1129,54 @@ def get_nan_params(band_basis='standard', max_n_peaks=5, min_peak_height=0.0, pe
                     'error': error}
     return params_out
 
-def _isolate_fit_joint_parallel(filename, cdx, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250, n_division=1, log_freqs=False, verbose=0):
+def _isolate_fit_joint_parallel(filename, freqs, cdx, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250, log_freqs=False, verbose=0):
     """
     Function that runs sequentially to fit the open and closed data for a single channel of a single file
     """
-    
-    mtd = np.load(filename, allow_pickle=True)
-    closed_power = mtd['closed_power']
-    closed_freqs = mtd['closed_freqs']
-    open_power = mtd['open_power']
-    open_freqs = mtd['open_freqs']
-
-    ps_closed = ParamSpectra(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
+    loaded_psd_data = td.load_single_subject_transform_data(filename, inner_keys=['open_power', 'closed_power']) # {'open_power': np.array, 'closed_power': np.array}
+    open_power = loaded_psd_data['open_power']
+    closed_power = loaded_psd_data['closed_power']
+    ps_closed = ParamSpectra(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, log_freqs=log_freqs, verbose=verbose)
     try:
-        ps_closed.fit(closed_freqs, closed_power[cdx])
+        ps_closed.fit(freqs, closed_power[cdx])
         closed_params = ps_closed.get_params_out()
     except:
         print(f"Failed to fit closed data for channel {cdx}, file {filename}")
-        closed_params = get_nan_params(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
-        
+        closed_params = get_nan_params(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, verbose=verbose)
 
-    ps_open = ParamSpectra(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
+    ps_open = ParamSpectra(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, log_freqs=log_freqs, verbose=verbose)
     try:
-        ps_open.fit(open_freqs, open_power[cdx])
+        ps_open.fit(freqs, open_power[cdx])
         open_params = ps_open.get_params_out()
     except:
         print(f"Failed to fit open data for channel {cdx}, file {filename}")
-        open_params = get_nan_params(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
+        open_params = get_nan_params(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, verbose=verbose)
 
     return open_params, closed_params
 
-def _parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250, n_division=1, log_freqs=False, n_chans=None, parallel=True, n_jobs=1, fdx=None, n_files=None, verbose=0):
+def _parallel_fit_psds(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250,  log_freqs=False, n_channels=1, parallel=False, n_jobs=1, fdx=None, n_files=None, inner_jobs=1, verbose=0):
     """ 
     Function that runs in parallel to fit the open and closed data for a single file
     """
     if fdx is not None:
         if n_files is not None:
-            print(f"Loading file {fdx+1}/({n_files})")
+            print(f"Loading subj {fdx+1}/({n_files})")
             ftt = time.time()
-    mtd = np.load(filename, allow_pickle=True)
-    open_power = mtd['open_power']
-    open_freqs = mtd['open_freqs']
-    closed_power = mtd['closed_power']
-    closed_freqs = mtd['closed_freqs']
-    n_channels = len(mtd['channels'])
-    if n_chans is not None:
-        n_channels = n_chans
-    # assert n_channels == open_power.shape[0] == closed_power.shape[0], f"Number of channels {n_channels} does not match number of power spectra {open_power.shape[0]} and {closed_power.shape[0]}"
-    if not parallel:
-        def _fit_open_parallel(cdx):
-            ps_open = ParamSpectra(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
-            ps_open.fit(open_freqs, open_power[cdx])
-            time.sleep(0)
-            return ps_open.get_params_out()
-        
-        def _fit_closed_parallel(cdx):
-            ps_closed = ParamSpectra(bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, n_division=n_division, log_freqs=log_freqs, verbose=verbose)
-            ps_closed.fit(closed_freqs, closed_power[cdx])
-            time.sleep(0)
-            return ps_closed.get_params_out()
+    loaded_psd_data = td.load_single_subject_transform_data(filename, inner_keys=['open_power', 'closed_power']) # {'open_power': np.array, 'closed_power': np.array}
+    open_power = loaded_psd_data['open_power']
+    closed_power = loaded_psd_data['closed_power']
+    assert open_power.shape[0] == closed_power.shape[0], f"Number of channels {n_channels} does not match number of power spectra {open_power.shape[0]} and {closed_power.shape[0]}"
+    assert n_channels <= open_power.shape[0], f"Number of channels {n_channels} is greater than number of power spectra {open_power.shape[0]} and {closed_power.shape[0]}"
+
+    def _fit_power(power):
+        ps_closed = ParamSpectra(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, prominence=prominence, log_freqs=log_freqs, verbose=verbose)
+        try:
+            ps_closed.fit(freqs, power)
+            params_out = ps_closed.get_params_out()
+        except:
+            params_out = get_nan_params(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, l_freq=l_freq, h_freq=h_freq, verbose=verbose)
+        time.sleep(0)
+        return params_out
         
     if parallel:
         
@@ -1174,8 +1184,8 @@ def _parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode
             print(f"Fitting {n_channels} channels in parallel")
             ptime = time.time()
 
-        n_inner_jobs = min(max((os.cpu_count()//2)//n_jobs,1), n_channels)
-        open_fit_closed_fit = Parallel(n_jobs=n_inner_jobs, verbose=5)(delayed(_isolate_fit_joint_parallel)(filename, cdx, bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, l_freq=l_freq, h_freq=h_freq, n_division=n_division, log_freqs=log_freqs, verbose=verbose) for cdx in range(n_channels))
+        n_inner_jobs = min(min(max((os.cpu_count()//2)//n_jobs,1), n_channels), inner_jobs)
+        open_fit_closed_fit = Parallel(n_jobs=n_inner_jobs, verbose=5)(delayed(_isolate_fit_joint_parallel)(filename, freqs, cdx, band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, l_freq=l_freq, h_freq=h_freq, log_freqs=log_freqs, verbose=verbose) for cdx in range(n_channels))
         open_fit = [ofcf[0] for ofcf in open_fit_closed_fit]
         closed_fit = [ofcf[1] for ofcf in open_fit_closed_fit]
 
@@ -1186,8 +1196,8 @@ def _parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode
             print(f"Fitting {n_channels} channels in serial")
             ptime = time.time()
             
-        open_fit = [_fit_open_parallel(cdx) for cdx in range(n_channels)]
-        closed_fit = [_fit_closed_parallel(cdx) for cdx in range(n_channels)]
+        open_fit = [_fit_power(open_power[cdx]) for cdx in range(n_channels)]
+        closed_fit = [_fit_power(closed_power[cdx]) for cdx in range(n_channels)]
         if verbose > 0:
             print(f"Finished fitting in {time.time() - ptime} seconds")
     # will return n_channels len list of dictionaries
@@ -1197,29 +1207,63 @@ def _parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode
     time.sleep(0)
     return open_fit, closed_fit
 
-def _extract_model_params(**kwargs):
+def _extract_parameterization_params(**kwargs):
     out_dict = {
-        'loadpath': kwargs['loadpath'],
-        'bands': kwargs['bands'],
+        'band_basis': kwargs['band_basis'],
         'max_n_peaks': kwargs['max_n_peaks'],
         'aperiodic_mode': kwargs['aperiodic_mode'],
         'prominence': kwargs['prominence'],
-        'fs': kwargs['fs'],
+        'fs_baseline': kwargs['fs_baseline'],
         'l_freq': kwargs['l_freq'],
         'h_freq': kwargs['h_freq'],
-        'n_division': kwargs['n_division'],
         'log_freqs': kwargs['log_freqs'],
         'num_load_subjs': kwargs['num_load_subjs'],
         'random_load': kwargs['random_load'],
+        'choose_subjs': kwargs['choose_subjs'],
     }
     return out_dict
 
-def convert_open_closed_fits_to_df(open_closed_fits, subjs, band_basis='custom', max_n_peaks=5, l_freq=0.3, h_freq=250, n_division=1, channels=CHANNELS):
+
+
+def _extract_open_closed_params(**kwargs):
+    open_closed_params = {}
+    locd_keys = ['data_l_freq', 'data_h_freq', 'fs_baseline', 'order', 'notches', 'notch_width', 'num_subjs', 'verbose', 'reference_method', 'reference_channels', 'keep_refs', 'bad_channels', 'filter_ecg', 'late_filter_ecg', 'ecg_l_freq', 'ecg_h_freq', 'ecg_thresh', 'ecg_method', 'include_ecg']
+    for key in locd_keys:
+        if 'data_' in key:
+            open_closed_params[key.replace('data_', '')] = kwargs[key]
+        else:
+            open_closed_params[key] = kwargs[key]
+    return open_closed_params
+
+def _extract_td_params(**kwargs):
+    td_params = {}
+    td_keys = ['interpolate_spectrum', 'freq_interp_method', 'which_segment', 'bandwidth']
+    for key in td_keys:
+        td_params[key] = kwargs[key]
+    return td_params
+
+
+def convert_open_closed_fits_to_df(open_closed_fits: ArrayLike, subjs: ArrayLike, channels: ArrayLike, band_basis='custom', max_n_peaks=5, l_freq=0.3, h_freq=250,  aperiodic_mode='knee', verbose=0) -> pd.DataFrame:
+    """
+    Given a list of fitted parameters, the subjs corresponding to the list and the ordered channels, returns a dataframe (n_subjs, n_features)
+    Inputs:
+        - open_closed_fits: list of tuples of open and closed fitted parameters
+        - subjs: list of subjects 
+        - channels: list of channels
+        - band_basis: The basis for the bands ['custom', 'standard', 'log-standard', 'custom_low']
+        - max_n_peaks: The maximum number of peaks to fit
+        - l_freq: The lowest frequency to fit
+        - h_freq: The highest frequency to fit
+    Returns:
+        - spectral_features: dataframe of spectral features (n_subjs, n_features)
+    """
+    assert len(open_closed_fits) == len(subjs), f"Number of open closed fits {len(open_closed_fits)} does not match number of subjects {len(subjs)}"
+    assert len(channels) == len(open_closed_fits[0][0]), f"Number of channels {len(channels)} does not match number of channels in open closed fits {len(open_closed_fits[0][0])}"
     
     band_basis = _convert_band_basis(band_basis, max_n_peaks)
-    bands_ranges = fu.make_bands(band_basis, l_freq=l_freq, fs=h_freq*2, n_division=n_division)
+    bands_ranges = fu.make_bands(band_basis, min_freq=l_freq, fs=h_freq*2)
     n_channels = len(open_closed_fits[0][0])
-    n_aps = 3
+    n_aps = 3 if aperiodic_mode == 'knee' else 2
     n_gauss = 3*len(bands_ranges)
     n_peaks = 3*len(bands_ranges)
     n_rsq = 1
@@ -1227,43 +1271,59 @@ def convert_open_closed_fits_to_df(open_closed_fits, subjs, band_basis='custom',
     n_noise_wids = 4
     n_noise_pks = 4
     n_params = n_aps + n_gauss + n_peaks + n_rsq + n_err + n_noise_wids + n_noise_pks
-    n_features=  n_channels*2*n_params # 2 is for open and closed
-    out_array = np.zeros((len(subjs), n_features))
-
-    for sdx, (open_fit, closed_fit) in enumerate(open_closed_fits):
-        for cdx in range(n_channels):
-            out_array[sdx, (cdx*2)*n_params: (cdx*2+1)*n_params] = np.concatenate([open_fit[cdx]['aperiodic_params'], open_fit[cdx]['gaussian_params'], open_fit[cdx]['peak_params'], np.array([open_fit[cdx]['r_squared'], open_fit[cdx]['error']]), open_fit[cdx]['noise_wids'], open_fit[cdx]['noise_pks']])
-            # closed
-            out_array[sdx, (cdx*2+1)*n_params: (cdx*2+2)*n_params] = np.concatenate([closed_fit[cdx]['aperiodic_params'], closed_fit[cdx]['gaussian_params'], closed_fit[cdx]['peak_params'], np.array([closed_fit[cdx]['r_squared'], closed_fit[cdx]['error']]), closed_fit[cdx]['noise_wids'], closed_fit[cdx]['noise_pks']])
-
+    n_features=  n_channels*n_params # 2 is for open and closed
+    dummy_num =  -1000000.512
+    open_array = np.ones((len(subjs), n_features)) * dummy_num
+    closed_array = np.ones((len(subjs), n_features)) * dummy_num
     column_names = []
-    for cdx in range(n_channels):
-        channel = channels[cdx]
-        column_names.extend([f'open_ap_offset_{channel}', f'open_ap_knee_{channel}', f'open_ap_exp_{channel}'])
-        for bdx in range(len(bands_ranges)):
-            column_names.extend([f'open_gauss_amp_{channel}_{bands_ranges[bdx]}', f'open_gauss_mean_{channel}_{bands_ranges[bdx]}', f'open_gauss_std_{channel}_{bands_ranges[bdx]}'])
-        for bdx in range(len(bands_ranges)):
-            column_names.extend([f'open_peak_cf_{channel}_{bands_ranges[bdx]}', f'open_peak_pw_{channel}_{bands_ranges[bdx]}', f'open_peak_bw_{channel}_{bands_ranges[bdx]}'])
-        column_names.extend([f'open_rsq_{channel}', f'open_mape_{channel}'])
-        for pdx in range(n_noise_wids):
-            column_names.extend([f'open_noise_range_{channel}_{pdx}_{pdx%2}'])
-        for pdx in range(n_noise_pks):
-            column_names.extend([f'open_noise_pk_{channel}_{pdx}'])
-    for cdx in range(n_channels):
-        channel = channels[cdx]
-        column_names.extend([f'closed_ap_offset_{channel}', f'closed_ap_knee_{channel}', f'closed_ap_exp_{channel}'])
-        for bdx in range(len(bands_ranges)):
-            column_names.extend([f'closed_gauss_amp_{channel}_{bands_ranges[bdx]}', f'closed_gauss_mean_{channel}_{bands_ranges[bdx]}', f'closed_gauss_std_{channel}_{bands_ranges[bdx]}'])
-        for bdx in range(len(bands_ranges)):
-            column_names.extend([f'closed_peak_cf_{channel}_{bands_ranges[bdx]}', f'closed_peak_pw_{channel}_{bands_ranges[bdx]}', f'closed_peak_bw_{channel}_{bands_ranges[bdx]}'])
-        column_names.extend([f'closed_rsq_{channel}', f'closed_mape_{channel}'])
-        for pdx in range(n_noise_wids):
-            column_names.extend([f'closed_noise_range_{channel}_{pdx}_{pdx%2}'])
-        for pdx in range(n_noise_pks):
-            column_names.extend([f'closed_noise_pk_{channel}_{pdx}'])
+    parameter_groups = ['aperiodic_params', 'gaussian_params', 'peak_params', 'r_squared', 'error', 'noise_wids', 'noise_pks']
+    group_sizes = {'aperiodic_params': n_aps, 'gaussian_params': n_gauss, 'peak_params': n_peaks, 'r_squared': n_rsq, 'error': n_err, 'noise_wids': n_noise_wids, 'noise_pks': n_noise_pks}
+    for sdx, (open_fit, closed_fit) in enumerate(open_closed_fits):
+        filled_to = 0
+        for cdx in range(n_channels):
+            for pdx, param_group in enumerate(parameter_groups):
+                if group_sizes[param_group] > 1:
+                    assert len(list(open_fit[cdx][param_group])) == len(list(closed_fit[cdx][param_group])) == group_sizes[param_group], f"Number of parameters in {param_group} for channel {cdx} does not match"
+                col_idx_start = filled_to
+                col_idx_end = filled_to + group_sizes[param_group]
+                open_array[sdx, col_idx_start:col_idx_end] = open_fit[cdx][param_group]
+                closed_array[sdx, col_idx_start:col_idx_end] = closed_fit[cdx][param_group]
+                filled_to = col_idx_end
+                if sdx == 0:
+                    if param_group == 'aperiodic_params':
+                        group_features = ['ap_offset', 'ap_knee', 'ap_exp'] if n_aps == 3 else ['ap_offset', 'ap_exp']
+                    elif param_group == 'gaussian_params':
+                        group_features = []
+                        for bdx in range(len(bands_ranges)):
+                            group_features.extend([f'gauss_amp_{bands_ranges[bdx]}', f'gauss_mean_{bands_ranges[bdx]}', f'gauss_std_{bands_ranges[bdx]}'])
+                    elif param_group == 'peak_params':
+                        group_features = []
+                        for bdx in range(len(bands_ranges)):
+                            group_features.extend([f'peak_cf_{bands_ranges[bdx]}', f'peak_pw_{bands_ranges[bdx]}', f'peak_bw_{bands_ranges[bdx]}'])
+                    elif param_group == 'r_squared':
+                        group_features = ['rsq']
+                    elif param_group == 'error':
+                        group_features = ['mape']
+                    elif param_group == 'noise_wids':
+                        group_features = []
+                        for pdx in range(n_noise_wids):
+                            group_features.extend([f'noise_range_{pdx}_{pdx%2}'])
+                    elif param_group == 'noise_pks':
+                        group_features = []
+                        for pdx in range(n_noise_pks):
+                            group_features.extend([f'noise_pk_{pdx}'])
+                    else:
+                        raise ValueError(f"Parameter group {param_group} not understood")
+                    column_names.extend([f'{feature}_{channels[cdx]}' for feature in group_features])
     assert len(column_names) == n_features, f"Number of columns {len(column_names)} does not match number of features {n_features}"
-    out_df = pd.DataFrame(out_array, columns=column_names, index=subjs)
-    return out_df
+    open_closed_features =  np.concatenate([open_array, closed_array], axis=1)
+    # assert that none of features are dummy_num
+    assert not np.any(open_closed_features == dummy_num), f"Found dummy number {dummy_num} in open closed features"
+    open_closed_feature_names = [f'Parameterized open_{feature}' for feature in column_names] + [f'Parameterized closed_{feature}' for feature in column_names]
+    assert open_closed_features.shape == (len(subjs), len(open_closed_feature_names)), f"Shape of open closed features {open_closed_features.shape} does not match shape of open closed feature names {len(open_closed_feature_names)}"
+    spectral_features = pd.DataFrame(open_closed_features, columns=open_closed_feature_names, index=subjs)
+    return spectral_features
+    
 
 def _convert_band_basis(band_basis, max_n_peaks=None):
     """
@@ -1277,6 +1337,9 @@ def _convert_band_basis(band_basis, max_n_peaks=None):
 
 #### Tests
 def _test_periodic_fit():
+    """
+    Tests the fitting of the periodic component
+    """
     freqs = np.linspace(0, 10, 100)
     power_spectrum = 2 * np.exp(-(freqs - 2)**2 / 1) + 1.5 * np.exp(-(freqs - 6)**2 / 0.5)
     bands = [(0, 4), (5, 10)]
@@ -1294,110 +1357,75 @@ def _test_periodic_fit():
     assert np.allclose(fitted_spectrum, power_spectrum, atol=0.1), "Fitted spectrum does not match original spectrum"
 
 def _test_convert_open_closed_fits_to_df():
+    """
+    Tests the conversion of open closed fits to a dataframe
+    """
     # randomly load two subjects
     print("Testing convert open closed fits to df")
-    loadpath = '/scratch/ap60/mTBI/transform_data/params/params5/'
-    # loadpath = '/shared/roy/'
-    subjs = get_subjs_paths(loadpath, num_load_subjs=2, random_load=True)
-    filenames = [os.path.join(loadpath, subj, f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
-    channels = np.load(filenames[0], allow_pickle=True)['channels']
-    open_closed_fits = [_parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_chans=2, verbose=0) for filename in filenames]
-    out_df = convert_open_closed_fits_to_df(open_closed_fits, subjs, bands='standard', max_n_peaks=5, l_freq=0.3, h_freq=250, n_division=1, channels=channels)
+    loadpath = os.path.join(TDPATH, 'params/params0/')
+    subjs = [key for key in os.listdir(loadpath) if key.isnumeric()]
+    subjs = np.random.choice(subjs, 2, replace=False)
+    filenames = [os.path.join(loadpath, subj, 'avg', f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
+    channelpath = os.path.join(loadpath, 'channels.npy')
+    freqs = np.load(os.path.join(loadpath, 'common_freqs.npy'))
+    channels = np.load(channelpath)
+    open_closed_fits = [_parallel_fit_psds(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0) for filename in filenames]
+    channels = channels[:2]
+    out_df = convert_open_closed_fits_to_df(open_closed_fits, subjs, channels, band_basis='custom', max_n_peaks=5, l_freq=0.3, h_freq=250, aperiodic_mode='knee')
     print(f"Finished testing open closed fits to df, shape {out_df.shape}")
 
 def _test_parallel_vs_non_parallel_fit_psds():
+    """
+    Tests the parallel vs non parallel fitting of the psds
+    """
     # randomly load two subjects
     print("Testing convert open closed fits to df")
-    # loadpath = '/scratch/ap60/mTBI/transform_data/params/params7/'
     loadpath ='/shared/roy/mTBI/data_transforms/loaded_transform_data/params/params5/'
-    subjs = get_subjs_paths(loadpath, num_load_subjs=3, random_load=True)
-    filenames = [os.path.join(loadpath, subj, f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
-    channels = np.load(filenames[0], allow_pickle=True)['channels']
+    loadpath = os.path.join(TDPATH, 'params/params0/')
+    subjs = [key for key in os.listdir(loadpath) if key.isnumeric()]
+    subjs = np.random.choice(subjs, 2, replace=False)
+    freqs = np.load(os.path.join(loadpath, 'common_freqs.npy'))
+    filenames = [os.path.join(loadpath, subj, 'avg', f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
     ptime = time.time()
-    open_closed_fits = Parallel(n_jobs=len(subjs), verbose=5)(delayed(_parallel_fit_psds)(filename, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_chans=2, verbose=0) for filename in filenames)
-    print(f"Parallel time: {time.time() - ptime}")
+    open_closed_fits = Parallel(n_jobs=len(subjs), verbose=5)(delayed(_parallel_fit_psds)(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0, parallel=True, inner_jobs=2) for filename in filenames)
+    print(f"Parallel outer, Inner parallel time: {time.time() - ptime}")
+    pnptime = time.time()
+    open_closed_fits = Parallel(n_jobs=len(subjs), verbose=5)(delayed(_parallel_fit_psds)(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0, parallel=False) for filename in filenames)
+    print(f"Parallel outer, linear inner time: {time.time() - pnptime}")
+
     nptime = time.time()
-    open_closed_fits = [_parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_chans=2, verbose=0) for filename in filenames]
-    print(f"Non parallel time: {time.time() - nptime}")
+    open_closed_fits = Parallel(n_jobs=1, verbose=5)(delayed(_parallel_fit_psds)(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0, parallel=True, inner_jobs=len(subjs)*2) for filename in filenames)
+    print(f"Linear outer, parallel inner time: {time.time()-nptime}")
+    ntime = time.time()
+    open_closed_fits = Parallel(n_jobs=1, verbose=5)(delayed(_parallel_fit_psds)(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0, parallel=False) for filename in filenames)
+    print(f"Linear outer, linear inner time: {time.time()-ntime}")
+
+    finaltime = time.time()
+
+    print(f"Overall:\n\tParallel outer, parallel inner: {pnptime-ptime}\t Parallel outer, linear inner: {nptime-pnptime}") # parallel outer, linear inner fastest at this scale
+    print(f"\tLinear outer, parallel inner: {ntime-nptime}\t Linear outer, linear inner: {finaltime-ntime}")
+
     print(f"Finished testing parallel vs non parallel fit psds")
+
 
 def _test_fit():
     # randomly load one subject
     print("Testing fit")
-    # loadpath = '/scratch/ap60/mTBI/transform_data/params/params7/'
-    loadpath ='/shared/roy/mTBI/data_transforms/loaded_transform_data/params/params5/' 
-    subjs = get_subjs_paths(loadpath, num_load_subjs=1, random_load=True)
-    filenames = [os.path.join(loadpath, subj, f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
-    channels = np.load(filenames[0], allow_pickle=True)['channels']
-    open_closed_fits = [_parallel_fit_psds(filename, bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_chans=2, verbose=0, log_freqs=True, parallel=False) for filename in filenames]
-    out_df = convert_open_closed_fits_to_df(open_closed_fits, subjs, bands='standard', max_n_peaks=5, l_freq=0.3, h_freq=250, n_division=1, channels=channels)
+    loadpath = os.path.join(TDPATH, 'params/params0/')
+    subjs = [key for key in os.listdir(loadpath) if key.isnumeric()]
+    subjs = np.random.choice(subjs, 2, replace=False)
+    filenames = [os.path.join(loadpath, subj, 'avg', f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
+    channelpath = os.path.join(loadpath, 'channels.npy')
+    channels = np.load(channelpath)
+    freqs = np.load(os.path.join(loadpath, 'common_freqs.npy'))
+    open_closed_fits = [_parallel_fit_psds(filename, freqs, band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, n_channels=2, verbose=0, log_freqs=True, parallel=False) for filename in filenames]
+    channels = channels[:2]
+    out_df = convert_open_closed_fits_to_df(open_closed_fits, subjs, channels, band_basis='custom', max_n_peaks=5, l_freq=0.3, h_freq=250,  aperiodic_mode='knee')
     print(f"Finished testing fit, shape {out_df.shape}")
 
-def main(transform_params, transform_datapath=TDPATH, featurepath=FEATUREPATH, num_load_subjs=1, n_jobs=1, random_load=False, \
-         bands='standard', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, fs=500, l_freq=0.3, h_freq=250, n_division=1, log_freqs=False,verbose=0):
-    """
-    Extracts the parameterized spectra as a dataframe from PSD data
-    Inputs:
-        - transform_params (dict): Parameters for the PSD transform
-        - transform_datapath (str): Path to the transform data
-        - featurepath (str): Path to save the feature data
-        - num_load_subjs (int): Number of subjects to load
-        - n_jobs (int): Number of jobs to run in parallel
-        - random_load (bool): Whether to randomly load subjects
-        - bands (str): Basis for the bands
-        - max_n_peaks (int): Maximum number of peaks to fit
-        - aperiodic_mode (str): Mode for the aperiodic component
-        - prominence (float): Prominence for peak detection
-        - fs (int): Sampling frequency
-        - l_freq (float): Lower frequency bound
-        - h_freq (float): Upper frequency bound
-        - n_division (int): Number of divisions for the bands
-        - log_freqs (bool): Whether to log the frequencies
-        - verbose (int): Verbosity level
-    Outputs:
-        - spectral_parameters (pd.DataFrame): Dataframe of the spectral parameters with subjects as the index
-    
-    """
-    model_params = _extract_model_params(transform_datapath=transform_datapath, bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, \
-                                            fs=fs, l_freq=l_freq, h_freq=h_freq, n_division=n_division, log_freqs=log_freqs,
-                                            num_load_subjs=num_load_subjs, random_load=random_load)
-    parameterized_savepath = os.path.join(featurepath, 'parameterized_psds')
-    all_params = du.make_dict_saveable({**transform_params, **model_params})
-    du.clean_params_path(parameterized_savepath)
-    savepath, found_match = du.check_and_make_params_folder(parameterized_savepath, all_params)
-    savefilename = os.path.join(savepath, 'spectral_parameters.csv')
-    if found_match:
-        if verbose > 0:
-            print(f"Found match for {all_params} at {savepath}")
-        spectral_parameters = pd.read_csv(savefilename, index_col=0)
-    else:
-        if verbose > 0:
-            print(f"No match found for {all_params} at {savepath}")
-            print(f"Running parameterized psd with model params {model_params}")
-        num_load_subjs = model_params['num_load_subjs']
-        random_load = model_params['random_load']
-        
-        # # load the mt data (smartly to minimize memory usage)
-        # params = json.load(open(os.path.join(loadpath, 'params.json'), 'r'))
-        if h_freq is None:
-            h_freq = fs//2
-        subjs = get_subjs_paths(transform_datapath, num_load_subjs=num_load_subjs, random_load=random_load)
-        filenames = [os.path.join(transform_datapath, subj, f'open_closed_multitaper_psds_{subj}.npz') for subj in subjs]
-        n_files = len(filenames)
-        for filename in filenames:
-            assert os.path.exists(filename), f"File {filename} does not exist"
-        channels = np.load(filenames[0], allow_pickle=True)['channels']
-        # parallelize the open and closed fitting for each subject
-        open_closed_fits = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(_parallel_fit_psds)(filename, bands=bands, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, l_freq=l_freq, h_freq=h_freq, n_division=n_division, log_freqs=log_freqs,n_jobs=n_jobs, fdx=fdx, n_files=n_files, verbose=verbose) for fdx, filename in enumerate(filenames))
-        # save the results: ap_params n_chan x ((offset, knee, exp), gaussian_params (n_bands, amp, mean, std), peak_params (n_bands, cf, pw, bw), r_squared (1), mape error (1), noise_ranges (4), noise_pks (4))
-        
-        spectral_parameters = convert_open_closed_fits_to_df(open_closed_fits, subjs, bands=bands, max_n_peaks=max_n_peaks, l_freq=l_freq, h_freq=h_freq, n_division=n_division, channels=channels, verbose=verbose)
-
-    return spectral_parameters
-
 def _test_get_nan_params():
-    nan_params = get_nan_params(bands='standard', max_n_peaks=5, min_peak_height=0.0, peak_threshold=2.0, aperiodic_mode='knee', prominence=0.5, l_freq=0.3, h_freq=250, n_division=1, log_freqs=False, verbose=0)
-    n_bands = len(fu.make_bands('standard', l_freq=0.3, fs=500, n_division=1))
+    nan_params = get_nan_params(band_basis='custom', max_n_peaks=5, min_peak_height=0.0, aperiodic_mode='knee', l_freq=0.3, h_freq=250, verbose=0)
+    n_bands = len(fu.make_bands('custom', min_freq=0.3, fs=500))
     assert len(nan_params['aperiodic_params']) == 3, f"Number of aperiodic params {len(nan_params['aperiodic_params'])} does not match 3"
     assert len(nan_params['gaussian_params']) == 3*n_bands, f"Number of gaussian params {len(nan_params['gaussian_params'])} does not match 3*5"
     assert len(nan_params['peak_params']) == 3*n_bands, f"Number of peak params {len(nan_params['peak_params'])} does not match 3*5"
@@ -1415,30 +1443,133 @@ def _run_tests():
     _test_parallel_vs_non_parallel_fit_psds()
     print("All tests passed")
 
+
+def main(open_closed_params, transform_params, open_closed_path=LOCD_DATAPATH, featurepath=FEATUREPATH, num_load_subjs=151, n_jobs=1, random_load=False, internal_folder='data/internal/', which_psd_segment='avg', \
+         band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, fs_baseline=500, l_freq=0.3, h_freq=250,  choose_subjs='train', remove_noise=True, log_freqs=False, verbose=0):
+    """
+    Extracts the parameterized spectra as a dataframe from PSD data
+    Inputs:
+        - transform_params (dict): Parameters for the PSD transform
+        - transform_datapath (str): Path to the transform data
+        - featurepath (str): Path to save the feature data
+        - num_load_subjs (int): Number of subjects to load
+        - n_jobs (int): Number of jobs to run in parallel
+        - random_load (bool): Whether to randomly load subjects
+        - bands (str): Basis for the bands
+        - max_n_peaks (int): Maximum number of peaks to fit
+        - aperiodic_mode (str): Mode for the aperiodic component
+        - prominence (float): Prominence for peak detection
+        - fs (int): Sampling frequency
+        - l_freq (float): Lower frequency bound
+        - h_freq (float): Upper frequency bound
+        - log_freqs (bool): Whether to log the frequencies
+        - verbose (int): Verbosity level
+    Outputs:
+        - spectral_parameters (pd.DataFrame): Dataframe of the spectral parameters with subjects as the index
+    
+    """
+    model_params = _extract_parameterization_params(band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, \
+                                            fs_baseline=fs_baseline, l_freq=l_freq, h_freq=h_freq, log_freqs=log_freqs,
+                                            num_load_subjs=num_load_subjs, random_load=random_load, choose_subjs=choose_subjs)
+    parameterized_savepath = os.path.join(featurepath, 'parameterized_psds')
+    all_params = du.make_dict_saveable({**transform_params, **open_closed_params, **model_params})
+    du.clean_params_path(parameterized_savepath)
+    savepath, found_match = du.check_and_make_params_folder(parameterized_savepath, all_params)
+    savefilename = os.path.join(savepath, 'spectral_parameters.csv')
+    if found_match:
+        if verbose > 0:
+            print(f"Found match for {all_params} at {savepath}")
+        spectral_parameters = pd.read_csv(savefilename, index_col=0)
+        assert set(fu.select_subjects_from_dataframe(spectral_parameters, choose_subjs,internal_folder).index) == set(spectral_parameters.index), f"Subjects in dataframe {set(spectral_parameters.index)} do not match subjects in choose_subjs {set(fu.select_subjects_from_dataframe(spectral_parameters, choose_subjs,internal_folder).index)}"
+    else:
+        if verbose > 0:
+            print(f"No match found for {all_params} at {savepath}")
+            print(f"Running parameterized psd with model params {model_params}")
+        num_load_subjs = model_params['num_load_subjs']
+        random_load = model_params['random_load']
+
+        transform_data_pathdict = td.main(locd_params=open_closed_params, locd_savepath=open_closed_path, n_jobs=1, as_paths=True, **transform_params)
+        select_pathdict = select_datapathdict(fu.select_subjects_from_dict(transform_data_pathdict['subj_data'], choose_subjs, internal_folder=internal_folder), num_load_subjs=num_load_subjs, random_load=random_load, which_psd_segment=which_psd_segment)
+        channels = transform_data_pathdict['channels']
+        freqs = transform_data_pathdict['common_freqs']
+        if h_freq is None:
+            h_freq = fs_baseline//2
+        subjs = [key for key in select_pathdict if key.isnumeric()]
+        n_subjs = len(subjs)
+        
+        # parallelize the open and closed fitting for each subject
+        open_closed_fits = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(_parallel_fit_psds)(select_pathdict[subj], freqs, band_basis=band_basis, max_n_peaks=max_n_peaks, aperiodic_mode=aperiodic_mode, prominence=prominence, l_freq=l_freq, h_freq=h_freq, log_freqs=log_freqs,n_jobs=n_jobs, fdx=fdx, n_files=n_subjs, n_channels=len(channels), verbose=verbose) for fdx, subj in enumerate(subjs))
+        # save the results: ap_params n_chan x ((offset, knee, exp), gaussian_params (n_bands, amp, mean, std), peak_params (n_bands, cf, pw, bw), r_squared (1), mape error (1), noise_ranges (4), noise_pks (4))
+        
+        spectral_parameters = convert_open_closed_fits_to_df(open_closed_fits, subjs, channels, band_basis=band_basis, max_n_peaks=max_n_peaks, l_freq=l_freq, h_freq=h_freq, aperiodic_mode=aperiodic_mode, verbose=verbose)
+        if verbose>0:
+            print(f"Saving parameterized spectral features to {savefilename}")
+        spectral_parameters.to_csv(savefilename)
+        with open(os.path.join(savepath, 'params.json'), 'w') as f:
+            json.dump(all_params, f)
+
+    if remove_noise:
+        nonnoise_cols = [col for col in spectral_parameters.columns if 'noise' not in col]
+        spectral_parameters = spectral_parameters[nonnoise_cols]
+
+    return spectral_parameters
+
 if __name__ == '__main__':
-    _run_tests()
+    # _run_tests()
 
     # _test_convert_open_closed_fits_to_df()
     parser = argparse.ArgumentParser(description='Fit power spectra to parameters')
-    parser.add_argument('--loadpath', type=str, default='/shared/roy/mTBI/data_transforms/loaded_transform_data/params/params5/', help='Path to load the data from') # also at scratch params7
-    parser.add_argument('--num_load_subjs', type=int, default=2, help='Number of subjects to load')
+
+    ## LOCD params
+    parser.add_argument('--data_l_freq', type=float, default=0.3)
+    parser.add_argument('--data_h_freq', type=float, default=None)
+    parser.add_argument('--fs_baseline', type=float, default=500)
+    parser.add_argument('--order', type=int, default=6)
+    parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
+    parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
+    parser.add_argument('--num_subjs', type=int, default=151)
+    parser.add_argument('--reference_method', type=str, default='CSD')
+    parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
+    parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
+    parser.add_argument('--filter_ecg', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--late_filter_ecg', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--ecg_l_freq', type=float, default=8)
+    parser.add_argument('--ecg_h_freq', type=float, default=16)
+    parser.add_argument('--ecg_thresh', type=str, default='auto')
+    parser.add_argument('--ecg_method', type=str, default='correlation')
+    parser.add_argument('--include_ecg', action=argparse.BooleanOptionalAction, default=True)
+
+    ## Transform params
+    parser.add_argument('--interpolate_spectrum', type=int, default=1000)
+    parser.add_argument('--freq_interp_method', type=str, default='linear', choices=['linear', 'log', 'log10'])
+    parser.add_argument('--which_segment', type=str, default='avg', choices=['first', 'second', 'avg'], help='Which segment to use for the multitaper')
+    parser.add_argument('--bandwidth', type=float, default=1)
+
+
+    ## Parameterization params
+
+    parser.add_argument('--num_load_subjs', type=int, default=151, help='Number of subjects to load')
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run in parallel')
-    parser.add_argument('--random_load', type=bool, default=True, help='Whether to randomly load subjects')
-    parser.add_argument('--bands', type=str, default='standard', help='Bands to fit the gaussians to, e.g. [(0, 4), (5, 10)]')
+    parser.add_argument('--random_load', type=bool, default=False, help='Whether to randomly load subjects')
+    parser.add_argument('--choose_subjs', type=str, default='train', help='Which subjects to choose')
+    parser.add_argument('--band_basis', type=str, default='custom', help='Bands to fit the gaussians to, e.g. [(0, 4), (5, 10)]')
     parser.add_argument('--max_n_peaks', type=int, default=5, help='Maximum number of peaks to fit')
     parser.add_argument('--aperiodic_mode', type=str, default='knee', help='Aperiodic mode to fit')
     parser.add_argument('--l_freq', type=float, default=0.3, help='Low frequency to fit')
     parser.add_argument('--h_freq', type=float, default=250, help='High frequency to fit')
-    parser.add_argument('--n_division', type=int, default=1, help='Number of divisions to fit')
     parser.add_argument('--log_freqs', action=argparse.BooleanOptionalAction, default=True, help='Whether to log (base e) the frequencies')
     parser.add_argument('--prominence', type=float, default=0.5, help='Prominence to fit')
-    parser.add_argument('--fs', type=int, default=500, help='Sampling frequency')
     parser.add_argument('--verbose', type=int, default=0, help='Verbosity level')
+
     args = parser.parse_args()
     uin = input(f"Running with args: {args}, continue? (y/n)")
     if uin == 'y':
         st = time.time()
-        param_df = main(**vars(args))
+        open_closed_params = _extract_open_closed_params(**vars(args))
+        transform_params = _extract_td_params(**vars(args))
+        parameterization_params = _extract_parameterization_params(**vars(args))
+        param_df = main(open_closed_params, transform_params, **parameterization_params)
         print(f"Finished in {time.time()-st} seconds")
 
     else:

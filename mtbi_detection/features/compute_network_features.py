@@ -215,8 +215,8 @@ def compute_networks(network_params, open_closed_pathdict, channels, verbosity=1
     open_times = [[raw.times for raw in raws] for raws in open_raws]
     closed_times = [[raw.times for raw in raws] for raws in closed_raws]
 
-    assert all([raw.ch_names == channels for raws in open_raws for raw in raws]), "Not all open raws have the same channels"
-    assert all([raw.ch_names == channels for raws in closed_raws for raw in raws]), "Not all closed raws have the same channels"
+    assert all([list(raw.ch_names) == list(channels) for raws in open_raws for raw in raws]), "Not all open raws have the same channels"
+    assert all([list(raw.ch_names) == list(channels) for raws in closed_raws for raw in raws]), "Not all closed raws have the same channels"
 
 
     # make the bands and give them arbitrary names (band0, band1, etc)
@@ -311,7 +311,7 @@ def main(network_params, open_closed_params, channels, verbosity=1, save=True, f
     if found_match:
         if verbosity > 0:
             print(f"Found matching network features file, loading from {savefilename}")
-        network_features_df = pd.read_csv(os.path.join(network_feature_savepath, 'network_features.csv'), index_col=0)
+        network_features_df = pd.read_csv(savefilename, index_col=0)
         assert set(fu.select_subjects_from_dataframe(network_features_df, choose_subjs,internal_folder).index) == set(network_features_df.index)
     else:
         if verbosity > 0:

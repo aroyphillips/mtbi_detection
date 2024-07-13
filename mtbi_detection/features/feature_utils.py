@@ -732,6 +732,8 @@ def make_bands(basis='custom', divisions=1, log_division=False, custom_bands=Non
         bands = [(1/5, 1/2), (1/2, 1/0.7), (1.5, 4), (4, 10), (10, 30), (30, 80), (80, 200), (200, 600)]# from https://www.science.org/doi/pdf/10.1126/science.1099745
     elif basis=='custom':
         bands = [(0.3, 1.5), (1.5, 4), (4, 8), (8, 12.5), (12.5, 25), (25, 36), (36, 45), (45, 70), (70, 150), (150, 250)]
+    elif basis=='custom_low':
+        bands = [(0.3, 1.5), (1.5, 4), (4, 8), (8, 12.5), (12.5, 25), (25, 36), (36, 45), (45, 70), (70, 150)]
     elif 'linear' in basis:
         if len(basis.split('_'))  > 1:
             max_f = int(basis.split('_')[-1])
@@ -782,7 +784,7 @@ def make_bands(basis='custom', divisions=1, log_division=False, custom_bands=Non
     bands = [band for band in bands if band[1] > min_freq]
     # throw out any bands that have a lower bound greater than fs
     bands = [band for band in bands if band[0] < fs//2]
-    if verbosity > 0:
+    if verbosity > 1:
         print("bands", bands)
     return bands
 

@@ -6,8 +6,12 @@
 
 Repository for analyzing the acute mTBI data from Mission Connect Study uploaded to FITBIR: doi: 10.23718/FITBIR/1518866
 
-Will be completed prior to publication submission.
+Will be completed prior to publication.
 
+Installation:
+ ``git clone git@github.com:aroyphillips/mTBI_Classification.git``
+ ``conda env create -f environment.yml``
+ Note: the package scikit-optimize has been updated since numpy.int was deprecated. To fix this, locate usages in ~/./conda/pkgs/scikit-optimize*/space/transformers.py and ~/./conda/pkgs/scikit-optimize*/benchmarks/bench_ml.py replace np.int with int.
 ## Project Organization
 
 ```
@@ -15,35 +19,20 @@ Will be completed prior to publication submission.
 ├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
 ├── README.md          <- The top-level README for developers using this project.
 ├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-    ├── tables         <- Metadata files, e.g. the segment annotations
-    ├── tables         <- Internal files needed to run code (e.g. the scripts)
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- A default mkdocs project; see mkdocs.org for details
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
+│   ├── internal       <- Contains internal information, i.e. dataset subject splits
+│   └── tables         <- The annotations used to segment the data
 │
 ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
 │                         the creator's initials, and a short `-` delimited description, e.g.
 │                         `1.0-jqp-initial-data-exploration`.
 │
-├── pyproject.toml     <- Project configuration file with package metadata for mtbi_detection
-│                         and configuration for tools like black
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-│
 ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
 │   └── figures        <- Generated graphics and figures to be used in reporting
 │
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
+├── environment.yml   <- The yml file for reproducing the analysis environment, e.g.
+│                         generated with `conda env export > environments.yml`
 │
-├── setup.cfg          <- Configuration file for flake8
-│
-└── mtbi_detection                <- Source code for use in this project.
+└── mtbi_detection                <- Source code for replication of this project.
     │
     ├── __init__.py    <- Makes mtbi_detection a Python module
     │
@@ -57,11 +46,11 @@ Will be completed prior to publication submission.
     ├── features       <- Scripts to turn raw data into features for modeling
     │   └── compute_all_features.py <- Extracts all sets of features
     │
-    ├── models         <- Scripts to train models and then use trained models to make
+    ├── modeling         <- Scripts to train models and then use trained models to make
     │   │                 predictions
     │   ├── train_base_models.py
     │   ├── train_meta_models.py
-        └── evaluate_models.py
+        └── evaluate_final_models.py
     │
     └── visualization  <- Scripts to create exploratory and results oriented visualizations
         └── visualize.py
