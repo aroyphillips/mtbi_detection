@@ -1013,13 +1013,14 @@ def print_nans(df, verbose=True):
     
     return nan_indices
     
-def print_infs(df):
+def print_infs(df, verbose=True):
 
     inf_indices = np.where(np.isinf(df))
     n_infs = len(inf_indices[0])
-    print(f"Total Infs: {n_infs}")
-    for row, col in zip(*inf_indices):
-        print(f"Inf value at row {row} with index value {df.index[row]} in column {df.columns[col]}")
+    if verbose:
+        print(f"Total Infs: {n_infs}")
+        for row, col in zip(*inf_indices):
+            print(f"Inf value at row {row} with index value {df.index[row]} in column {df.columns[col]}")
     return inf_indices
 
 def get_binary_confusion_matrix(y_true, y_pred):
