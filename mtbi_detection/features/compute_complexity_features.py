@@ -497,7 +497,7 @@ def reshape_feature_distribution_array(distribution_features, subjs, channels, d
     return reshaped_features, new_columns
 
 
-def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, save=False, featurepath=FEATUREPATH, choose_subjs='train', internal_folder='data/internal/'):
+def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, save=False, featurepath=FEATUREPATH, choose_subjs='train', skip_ui=False, internal_folder='data/internal/'):
     """
     Given the params to load the open closed pathdict and the epoch making params
     compute the complexity features for each subject and save them to a csv
@@ -518,12 +518,12 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
     """
     complexitytime=time.time()
     distribution_metrics = ['mean', 'std', 'median', 'iqr', 'skewness', 'kurtosis']
-    open_closed_dict = locd.load_open_closed_pathdict(savepath=LOCD_DATAPATH, **open_closed_params)
+    open_closed_dict = locd.load_open_closed_pathdict(savepath=LOCD_DATAPATH, skip_ui=skip_ui, **open_closed_params)
     
     all_params = du.make_dict_saveable({**open_closed_params, 'channels': list(channels), 'window_len': window_len, 'overlap': overlap, 'choose_subjs': choose_subjs})
     complexity_path = os.path.join(featurepath, 'complexity_features')
-    du.clean_params_path(complexity_path)
-    complexitysavepath, found_match = du.check_and_make_params_folder(complexity_path, all_params)
+    du.clean_params_path(complexity_path, skip_ui=skip_ui)
+    complexitysavepath, found_match = du.check_and_make_params_folder(complexity_path, all_params, skip_ui=skip_ui)
     if found_match:
         if verbosity > 0:
             print(f"Found match for params in {complexitysavepath}")

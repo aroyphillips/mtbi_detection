@@ -52,7 +52,7 @@ roi_dict = {
     'Full': CHANNELS
 }
 
-def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_folder='data/internal/', use_regional=False, use_ecg=False, use_symptoms=False, return_separate=False, choose_subjs='train', **kwargs):
+def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_folder='data/internal/', use_regional=False, use_ecg=False, use_symptoms=False, return_separate=False, skip_ui=False, choose_subjs='train', **kwargs):
     
     if open_closed_path[-1] == '/':
         base_savepath = open_closed_path[:-1]
@@ -68,11 +68,11 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     # load the data
     print("Loading data")
     loadtime = time.time()
-    open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=open_closed_path)
+    open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=open_closed_path, skip_ui=skip_ui)
     
     # transform the data
     td_params = extract_transform_params(**kwargs)
-    transform_data_dict = td.main(locd_params=locd_params, locd_savepath=open_closed_path, n_jobs=kwargs['n_jobs'], as_paths=True, **td_params)
+    transform_data_dict = td.main(locd_params=locd_params, locd_savepath=open_closed_path, n_jobs=kwargs['n_jobs'], as_paths=True, skip_ui=skip_ui, **td_params)
     
     subjs = [str(s) for s in transform_data_dict['subj_data'] if str(s).isnumeric()]
     select_subjs = ld.load_splits(internal_folder)[choose_subjs]
@@ -81,8 +81,8 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
 
     print(f"My channels: {channels}")
     print(f"Time to load data: {time.time()-loadtime} seconds")
-    du.clean_params_path(savepath)
-    featurepath, _ = du.check_and_make_params_folder(savepath, {**locd_params, **td_params}, make_new_paramdir=True, save_early=True)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
+    featurepath, _ = du.check_and_make_params_folder(savepath, {**locd_params, **td_params}, make_new_paramdir=True, save_early=True, skip_ui=skip_ui)
     
 
     all_features = {}
@@ -90,8 +90,8 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing PSD powers and ratios")
     psdtime = time.time()
     psd_params = extract_power_params(**kwargs)
-    band_powers = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=False, channels=channels, state='all', save=True, featurepath=featurepath, **psd_params)
-    band_ratios = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=True, channels=channels, state='all', save=True, featurepath=featurepath, **psd_params)
+    band_powers = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=False, channels=channels, state='all', save=True, featurepath=featurepath, skip_ui=skip_ui, **psd_params)
+    band_ratios = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=True, channels=channels, state='all', save=True, featurepath=featurepath, skip_ui=skip_ui, **psd_params)
     all_features['band_powers'] = band_powers
     all_features['band_ratios'] = band_ratios
     print(f"Finished computing PSD features in {time.time()-psdtime} seconds, band_powers shape: {band_powers.shape}, band_ratios shape: {band_ratios.shape}")
@@ -100,7 +100,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing Maximal Power PSD features")
     maximtime = time.time()
     maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method'], 'choose_subjs': choose_subjs}
-    maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, internal_folder=internal_folder, **maximal_power_params)
+    maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, internal_folder=internal_folder, skip_ui=skip_ui, **maximal_power_params)
     all_features['maximal_power'] = maximal_power_df
     print(f"Finished computing maximal power features in {time.time()-maximtime} seconds, feature array shape: {maximal_power_df.shape}")
 
@@ -108,7 +108,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing spectral edge features")
     seftime = time.time()
     sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method'], 'choose_subjs': choose_subjs}
-    sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, internal_folder=internal_folder, **sef_params)
+    sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, internal_folder=internal_folder, skip_ui=skip_ui, **sef_params)
     all_features['spectral_edge'] = sef_df
     print(f"Finished computing spectral edge features in {time.time()-seftime} seconds, feature array shape: {sef_df.shape}")
 
@@ -116,14 +116,14 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing complexity features")
     complexityt = time.time()
     complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': choose_subjs}
-    complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, featurepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, **complexity_params)
+    complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, featurepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, skip_ui=skip_ui, **complexity_params)
     all_features['complexity'] = complexity_feature_df
     print(f"Finished computing complexity features in {time.time()-complexityt} seconds, feature array shape: {complexity_feature_df.shape}")
 
     # psd complexity features
     print("Computing PSD complexity features")
     complexityp = time.time()
-    psd_complexity_feature_df = cpcf.main(locd_params, td_params, channels, open_closed_path=open_closed_path, choose_subjs=choose_subjs, featurepath=featurepath, internal_folder=internal_folder, verbosity=kwargs['verbosity'], save=True)
+    psd_complexity_feature_df = cpcf.main(locd_params, td_params, channels, open_closed_path=open_closed_path, choose_subjs=choose_subjs, featurepath=featurepath, internal_folder=internal_folder, verbosity=kwargs['verbosity'], skip_ui=skip_ui, save=True)
     all_features['spectral_complexity'] = psd_complexity_feature_df
     print(f"Finished computing PSD complexity features in {time.time()-complexityp} seconds, feature array shape: {psd_complexity_feature_df.shape}")
 
@@ -131,14 +131,14 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     print("Computing network features")
     networkt = time.time()
     network_params = extract_network_params(**kwargs)
-    network_feature_df = cnf.main(network_params, locd_params, channels, verbosity=kwargs['verbosity'], save=True, featurepath=featurepath, choose_subjs=choose_subjs, internal_folder=internal_folder)
+    network_feature_df = cnf.main(network_params, locd_params, channels, verbosity=kwargs['verbosity'], save=True, featurepath=featurepath, choose_subjs=choose_subjs, skip_ui=skip_ui, internal_folder=internal_folder)
     all_features['network_features'] = network_feature_df
     print(f"Finished computing network features in {time.time()-networkt} seconds, feature array shape: {network_feature_df.shape}")        
 
     # Parameterized PSD features
     print(f"Computing Parameterized Spectra features")
     param_spectra_params = extract_parameterized_spectra_params(**kwargs, choose_subjs=choose_subjs)
-    spectral_parameterization = cpsf.main(locd_params, td_params, open_closed_path=open_closed_path, featurepath=featurepath, internal_folder=internal_folder, n_jobs=kwargs['n_jobs'], remove_noise=True, **param_spectra_params)
+    spectral_parameterization = cpsf.main(locd_params, td_params, open_closed_path=open_closed_path, featurepath=featurepath, internal_folder=internal_folder, n_jobs=kwargs['n_jobs'], remove_noise=True, skip_ui=skip_ui, **param_spectra_params)
     all_features['spectral_parameterization'] = spectral_parameterization
     print(f"Finished computing parameterized spectra features in {time.time()-networkt} seconds, feature array shape: {spectral_parameterization.shape}")
 
@@ -447,6 +447,8 @@ if __name__ == '__main__':
     ## general params
     parser.add_argument('--choose_subjs', type=str, default='train', help='Which subjects to choose from the data')
     parser.add_argument('--verbosity', type=int, default=1, help="The verbosity for the complexity features")
+    parser.add_argument('--return_separate', action=argparse.BooleanOptionalAction, default=False, help="Whether to return the separate dataframes")
+    parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
     
     args = parser.parse_args()
     print(args)

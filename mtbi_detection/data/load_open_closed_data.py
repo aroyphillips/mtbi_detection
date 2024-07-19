@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 
-def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], reference_method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, tables_folder='data/tables/'):
+def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], reference_method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, skip_ui=False, tables_folder='data/tables/'):
     """
     Given parameters, load the open closed data for all subjects
     Output:
@@ -29,7 +29,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
 
         savepath = du.check_savepath(savepath)
 
-        du.clean_params_path(savepath)
+        du.clean_params_path(savepath, skip_ui=skip_ui)
 
         with open('open_closed_path.txt', 'w') as f:
             f.write(savepath)
@@ -62,7 +62,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         params['late_filter_ecg'] = late_filter_ecg
 
     # load all the directory names that are children of os.path.join(savepath, 'params')
-    remove_ecg = False 
+    remove_ecg = False
     alt_params = params.copy()
     if params['h_freq'] == 0.5*fs_baseline:
         print(f"h_freq is 0.5*fs_baseline: {params['h_freq']}, setting h_freq to None in alt_params")
@@ -74,12 +74,12 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
         print(f"h_freq={params['h_freq']}")
         alt_params = params.copy()
 
-    du.clean_params_path(savepath)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
     try_savepath, found_match = du.check_and_make_params_folder(savepath, params, skip_ui=True, make_new_paramdir=False)
     if not found_match:
         ecg_params = params.copy()
         ecg_params['include_ecg'] = True
-        try_savepath, found_match = du.check_and_make_params_folder(savepath, ecg_params, skip_ui=True, make_new_paramdir=False)    
+        try_savepath, found_match = du.check_and_make_params_folder(savepath, ecg_params, skip_ui=True, make_new_paramdir=False)
         if not found_match:
             try_savepath, found_match = du.check_and_make_params_folder(savepath, alt_params, skip_ui=True, make_new_paramdir=False)
         else:
@@ -92,7 +92,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
             savepath = try_savepath
         remove_ecg = True and not include_ecg
         if not found_match:
-            savepath, found_match = du.check_and_make_params_folder(savepath, params)
+            savepath, found_match = du.check_and_make_params_folder(savepath, params, skip_ui=skip_ui)
     else:
         print(f"Found matching params file: {try_savepath}")
         savepath = try_savepath

@@ -32,7 +32,7 @@ MODEL_NAME_DICT = {
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
-RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results', 'base_learners')
+RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results', 'baselearners')
 OUTBASE = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'outfiles')
 
 def check_if_previous_run(feat_shortcuts, model_shortcut, datapath=RESULTS_SAVEPATH, n_prior_files=None, verbose=True):
@@ -107,7 +107,7 @@ def generate_filtered_permutations(feat_shortcuts, exclusions=None):
 
 
 def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", "sym", "sel"],\
-         duration=30, hyper_cv=3, fs_cv=3, n_fs_repeats=2, n_iterations=100, n_hyper_repeats=2,\
+         duration=30, n_hyper_cv=3, n_fs_cv=3, n_fs_repeats=2, n_iterations=100, n_hyper_repeats=2,\
             results_savepath=RESULTS_SAVEPATH, outbase=None, wait_time=15):
     """
     Driver to run train_baselearners.py across all feature sets and base models
@@ -115,9 +115,9 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
     print(f"Beginning to run {n_jobs} jobs in parallel")
     # call the python script with the correct arguments
 
-    base_call = ("python3 src/models/new_split_faster_full_cv_options.py --scoring=mcc --ref_method=CSD --n_jobs={n_jobs}"
-                 "--hyper_cv={hyper_cv} --fs_cv={fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats}"
-                 "--model_name={model_name} --n_iterations={n_iterations} --n_points={n_points} "
+    base_call = ("python3 mtbi_detection/modeling/train_baselearners.py --scoring=mcc --reference_method=CSD --n_jobs={n_jobs} "
+                 "--n_hyper_cv={n_hyper_cv} --n_fs_cv={n_fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats} "
+                 "--model_name={model_name} --n_iterations={n_iterations} --n_points={n_points} --skip_ui "
                  "--results_savepath={results_savepath} --which_features {which_features0} {which_features1} {which_features2} "
                  "{out_appdx}")
     n_total_runs = 0
@@ -177,7 +177,7 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                                         which_features0=which_features0, which_features1=which_features1,
                                         which_features2=which_features2,
                                         results_savepath=results_savepath,
-                                        hyper_cv=hyper_cv, fs_cv=fs_cv, n_fs_repeats=n_fs_repeats, 
+                                        n_hyper_cv=n_hyper_cv, n_fs_cv=n_fs_cv, n_fs_repeats=n_fs_repeats, 
                                         n_hyper_repeats=n_hyper_repeats, n_iterations=n_iterations, out_appdx=out_appdx)
                 print(call)
                 try:
@@ -211,8 +211,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run my models sequentially')
     parser.add_argument('--n_jobs', type=int, default=6, help='Number of jobs to run in parallel')
     parser.add_argument('--n_points', type=int, default=2, help='Number of points to sample in the hyperparameter search')
-    parser.add_argument('--hyper_cv', type=int, default=3, help='Number of cross validation folds for the hyperparameter search')
-    parser.add_argument('--fs_cv', type=int, default=3, help='Number of cross validation folds for the feature selection')
+    parser.add_argument('--n_hyper_cv', type=int, default=3, help='Number of cross validation folds for the hyperparameter search')
+    parser.add_argument('--n_fs_cv', type=int, default=3, help='Number of cross validation folds for the feature selection')
     parser.add_argument('--n_fs_repeats', type=int, default=2, help='Number of times to repeat the feature selection')
     parser.add_argument('--n_hyper_repeats', type=int, default=2, help='Number of times to repeat the hyperparameter search')
     parser.add_argument('--n_iterations', type=int, default=100, help='Number of iterations for the hyperparameter search')

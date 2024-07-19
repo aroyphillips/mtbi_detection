@@ -13,76 +13,8 @@ CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
-def get_spectral_edges(psd, freqs, channels=CHANNELS, spectral_edges=None, edge_increment=None, num_edges=None, log_edges=True, reverse_log=False, chan_axis=0, return_edge_names=True):
-    """
-    Compute the spectral edge at edge_increment increments
-    Inputs:
-        data: numpy array of shape (channels, freq_samples) if chan_axis=0, else (n_samples, channels, freq_samples) if chan_axis=1
-        freqs: numpy array of shape (freq_samples,)
-        channels: list of channel names
-        fs: sampling frequency
-        edge_increment: increment for the spectral edge
-        num_edges: number of edges to compute
-        log_edges: whether to compute log edges
-        reverse_log: whether to reverse the log edges
-        chan_axis: axis of channels
-        return_edge_names: whether to return the edge names
-    Outputs:
-        edges array of shape (channels, num_edges)
-    """
-    if spectral_edges is not None:
-        edge_names = spectral_edges
-        num_edges = len(edge_names)
-    else:
-        if edge_increment is not None and num_edges is None:
-            num_edges = int(100 / edge_increment)-1
-            edge_names = [(edge+1)*edge_increment / 100 for edge in range(num_edges)]
-        elif num_edges is not None and edge_increment is None:
-            if log_edges:
-                if reverse_log:
-                    edge_names = 1-np.logspace(-2, 0, num_edges, base=10)
-                    edge_names = np.flip(edge_names)
-                else:
-                    edge_names = np.logspace(-2, 0, num_edges, base=10)
-            else:
-                edge_names = np.linspace(0, 1, num_edges)
-        else:
-            raise ValueError("Must specify either edge_increment or num_edges, but not both.")
-    n_channels = psd.shape[chan_axis]
-    if chan_axis == 0:
-        edges = np.zeros((n_channels, num_edges))
-    elif chan_axis == 1:
-        edges = np.zeros((psd.shape[0], n_channels, num_edges))
-    else:
-        raise ValueError("chan_axis must be 0 or 1")
 
-    dx = freqs[1] - freqs[0]
-
-
-    if chan_axis == 0:
-        for cdx, channel in enumerate(channels):
-            total_cum_power = gp_integrate.cumulative_simpson(psd[cdx, :], dx=dx, initial=0) # https://stackoverflow.com/questions/18215163/cumulative-simpson-integration-with-scipy
-            total_chan_power = total_cum_power[-1]
-            # another approximation for integration of signal
-            # total_simps_power = scipy.integrate.simps(pxs[channel,:], dx=dx) # close but not exact
-            for edx in range(num_edges):
-                edge_power = total_chan_power * edge_names[edx]
-                edges[cdx, edx] = freqs[np.where(total_cum_power >= edge_power)[0][0]]
-    elif chan_axis == 1:
-        for ndx in range(psd.shape[0]):
-            for cdx, channel in enumerate(channels):
-                total_cum_power = gp_integrate.cumulative_simpson(psd[ndx, cdx, :], dx=dx, initial=0)
-                total_chan_power = total_cum_power[-1]
-                for edx in range(num_edges):
-                    edge_power = total_chan_power * edge_names[edx]
-                    edges[ndx, cdx, edx] = freqs[np.where(total_cum_power >= edge_power)[0][0]]
-        
-    if return_edge_names:
-        return edges, edge_names
-    else:
-        return edges
-
-def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FEATUREPATH, num_edges=None, edge_increment=None, log_edges=True, reverse_log=False, spectral_edge_method='automated', chan_axis=0, choose_subjs='train', internal_folder='data/internal/'):
+def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FEATUREPATH, num_edges=None, edge_increment=None, log_edges=True, reverse_log=False, spectral_edge_method='automated', chan_axis=0, choose_subjs='train', skip_ui=False, internal_folder='data/internal/'):
     """
     Compute the spectral edge features for the open and closed eyes data
     Inputs:
@@ -113,8 +45,8 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
     if spectral_edge_method == 'automated':
         spectral_params = {'spectral_edge_method': 'automated'}
     spectral_params['choose_subjs'] = choose_subjs
-    du.clean_params_path(savepath)
-    savepath, found_match = du.check_and_make_params_folder(savepath, spectral_params, save_early=False)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
+    savepath, found_match = du.check_and_make_params_folder(savepath, spectral_params, save_early=False, skip_ui=skip_ui)
 
     if found_match:
         sef_df = pd.read_csv(os.path.join(savepath, 'all_spectral_edge_frequencies.csv'), index_col=0)
@@ -242,6 +174,76 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
         # remove duplicate columns (same header same values)
     return sef_df
     
+
+def get_spectral_edges(psd, freqs, channels=CHANNELS, spectral_edges=None, edge_increment=None, num_edges=None, log_edges=True, reverse_log=False, chan_axis=0, return_edge_names=True):
+    """
+    Compute the spectral edge at edge_increment increments
+    Inputs:
+        data: numpy array of shape (channels, freq_samples) if chan_axis=0, else (n_samples, channels, freq_samples) if chan_axis=1
+        freqs: numpy array of shape (freq_samples,)
+        channels: list of channel names
+        fs: sampling frequency
+        edge_increment: increment for the spectral edge
+        num_edges: number of edges to compute
+        log_edges: whether to compute log edges
+        reverse_log: whether to reverse the log edges
+        chan_axis: axis of channels
+        return_edge_names: whether to return the edge names
+    Outputs:
+        edges array of shape (channels, num_edges)
+    """
+    if spectral_edges is not None:
+        edge_names = spectral_edges
+        num_edges = len(edge_names)
+    else:
+        if edge_increment is not None and num_edges is None:
+            num_edges = int(100 / edge_increment)-1
+            edge_names = [(edge+1)*edge_increment / 100 for edge in range(num_edges)]
+        elif num_edges is not None and edge_increment is None:
+            if log_edges:
+                if reverse_log:
+                    edge_names = 1-np.logspace(-2, 0, num_edges, base=10)
+                    edge_names = np.flip(edge_names)
+                else:
+                    edge_names = np.logspace(-2, 0, num_edges, base=10)
+            else:
+                edge_names = np.linspace(0, 1, num_edges)
+        else:
+            raise ValueError("Must specify either edge_increment or num_edges, but not both.")
+    n_channels = psd.shape[chan_axis]
+    if chan_axis == 0:
+        edges = np.zeros((n_channels, num_edges))
+    elif chan_axis == 1:
+        edges = np.zeros((psd.shape[0], n_channels, num_edges))
+    else:
+        raise ValueError("chan_axis must be 0 or 1")
+
+    dx = freqs[1] - freqs[0]
+
+
+    if chan_axis == 0:
+        for cdx, channel in enumerate(channels):
+            total_cum_power = gp_integrate.cumulative_simpson(psd[cdx, :], dx=dx, initial=0) # https://stackoverflow.com/questions/18215163/cumulative-simpson-integration-with-scipy
+            total_chan_power = total_cum_power[-1]
+            # another approximation for integration of signal
+            # total_simps_power = scipy.integrate.simps(pxs[channel,:], dx=dx) # close but not exact
+            for edx in range(num_edges):
+                edge_power = total_chan_power * edge_names[edx]
+                edges[cdx, edx] = freqs[np.where(total_cum_power >= edge_power)[0][0]]
+    elif chan_axis == 1:
+        for ndx in range(psd.shape[0]):
+            for cdx, channel in enumerate(channels):
+                total_cum_power = gp_integrate.cumulative_simpson(psd[ndx, cdx, :], dx=dx, initial=0)
+                total_chan_power = total_cum_power[-1]
+                for edx in range(num_edges):
+                    edge_power = total_chan_power * edge_names[edx]
+                    edges[ndx, cdx, edx] = freqs[np.where(total_cum_power >= edge_power)[0][0]]
+        
+    if return_edge_names:
+        return edges, edge_names
+    else:
+        return edges
+
 
 if __name__ == '__main__':
     sef_df = main()

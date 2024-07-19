@@ -81,7 +81,7 @@ def reshape_feature_array(distribution_features, subjs, channels, feature_metric
     assert np.allclose(rfda_numpy, reshaped_features, equal_nan=True), f"reshaped_features and rfda_numpy are not the same"
     return reshaped_features, new_columns
 
-def main(open_closed_params, transform_data_params, channels, open_closed_path=LOCD_DATAPATH, choose_subjs='train', featurepath=FEATUREPATH, internal_folder='data/internal/', verbosity=1, save=True):
+def main(open_closed_params, transform_data_params, channels, open_closed_path=LOCD_DATAPATH, choose_subjs='train', featurepath=FEATUREPATH, internal_folder='data/internal/', verbosity=1, skip_ui=False, save=True):
     """
     Given the parameters to load the psd transform data, compute complexity features on the psd data
     NOTE: 
@@ -103,8 +103,8 @@ def main(open_closed_params, transform_data_params, channels, open_closed_path=L
     # load the psd data
 
     all_params = {**open_closed_params, **transform_data_params, 'choose_subjs': choose_subjs}
-    du.clean_params_path(savepath)
-    pcom_savepath, found_match = du.check_and_make_params_folder(savepath, all_params)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
+    pcom_savepath, found_match = du.check_and_make_params_folder(savepath, all_params, skip_ui=skip_ui)
     savefilename = os.path.join(pcom_savepath, 'psd_complexity_features.csv')
     if found_match:
         complexity_feature_df = pd.read_csv(savefilename, index_col=0)

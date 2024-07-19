@@ -34,7 +34,7 @@ def main(locd_params = {
         'ecg_thresh': 'auto',
         'ecg_method': 'correlation'
     }, interpolate_spectrum=1000, freq_interp_method='linear',bandwidth=1, which_segment='avg',
-    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH, verbose=True):
+    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH,skip_ui=False, verbose=True):
     # define loading parameters
     print("Loading parameters: {}".format(locd_params))
     params = extract_locd_params(**locd_params)
@@ -47,13 +47,13 @@ def main(locd_params = {
     else:
         temp = locd_savepath
     savepath = os.path.join(os.path.dirname(temp), 'psd_transform')
-    savepath = du.check_savepath(savepath)
+    savepath = du.check_savepath(savepath, skip_ui=skip_ui)
     du.clean_params_path(savepath)
 
     found_match = False
     paramfile = 'params.json'
     
-    savepath, found_match = du.check_and_make_params_folder(savepath, params, paramfile=paramfile)
+    savepath, found_match = du.check_and_make_params_folder(savepath, params, paramfile=paramfile, skip_ui=skip_ui)
     if found_match:
         print("Loading data from {}".format(savepath))
         output_dict = load_all_transform_data_paths(savepath=savepath, subjs=None, as_paths=as_paths)

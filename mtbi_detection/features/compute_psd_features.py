@@ -14,7 +14,7 @@ LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
-def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, channels=CHANNELS, state='all', band_method='custom', bin_methods='all',verbosity=0, l_freq=0.3, fs=500, save=True, internal_folder='data/internal/', featurepath=FEATUREPATH):
+def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, channels=CHANNELS, state='all', band_method='custom', bin_methods='all',verbosity=0, l_freq=0.3, fs=500, save=True, internal_folder='data/internal/', skip_ui=False, featurepath=FEATUREPATH):
     """
     Given the output of transform_data, compute the PSD features for each subject 
     and return a dataframe with the features as columns and the subjects as rows.
@@ -43,8 +43,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
     power_path = os.path.join(featurepath, 'psd_power_features')
     if not os.path.exists(power_path):
         os.mkdir(power_path)
-    du.clean_params_path(power_path)
-    powersavepath, found_match = du.check_and_make_params_folder(power_path, power_params)
+    du.clean_params_path(power_path, skip_ui=skip_ui)
+    powersavepath, found_match = du.check_and_make_params_folder(power_path, power_params, skip_ui=skip_ui)
     if found_match:
         power_feature_df, found_match = load_power_features(powersavepath, ratio=ratio)
         if found_match:

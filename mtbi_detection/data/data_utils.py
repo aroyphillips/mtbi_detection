@@ -570,27 +570,32 @@ def check_and_make_params_folder(savepath, params, paramfile=None, paramfilename
 
     return newsavepath, found_match
 
-def check_savepath(savepath):
+def check_savepath(savepath, skip_ui=False):
     """
     Given a savepath, check if the savepath is correct. If it is not, then ask the user for a new savepath
     """
-    good_savepath = input(f"Savepath: {savepath}, is this correct? (y/n)")
-    if good_savepath == 'n':
-        savepath = input("Enter new savepath: ")
-    elif good_savepath == 'y':
-        print(f"Savepath: {savepath}")
+    if skip_ui:
+        good_savepath = input(f"Savepath: {savepath}, is this correct? (y/n)")
+        if good_savepath == 'n':
+            savepath = input("Enter new savepath: ")
+        elif good_savepath == 'y':
+            print(f"Savepath: {savepath}")
+        else:
+            raise ValueError(f"Invalid input {good_savepath} instead of y/n. Exiting...")
     else:
-        raise ValueError(f"Invalid input {good_savepath} instead of y/n. Exiting...")
+        # just make sure that the savepath exists
+        if not os.path.exists(savepath):
+            raise ValueError(f"Savepath {savepath} does not exist")
     return savepath
 
-def clean_params_path(savepath):
+def clean_params_path(savepath, skip_ui=False):
     """
     Given a savepath to be used for saving params, clean the path by removing all the unused params subdirectories
     """
     if not os.path.exists(os.path.join(savepath, 'params')):
         os.makedirs(os.path.join(savepath, 'params'))
     else:
-        cleanpath.cleanpath(os.path.join(savepath, 'params'))
+        cleanpath.cleanpath(os.path.join(savepath, 'params'), skip_ui=skip_ui)
     
 
 # need a function to repeat the values in a column through nans until the next nonnan value appears

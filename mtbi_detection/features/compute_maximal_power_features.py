@@ -34,7 +34,7 @@ ROI_DICT = {
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
-def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None, num_powers=20, percentile_edge_method='automated', save=True, choose_subjs='train', internal_folder='data/internal'):
+def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None, num_powers=20, percentile_edge_method='automated', save=True, skip_ui=False, choose_subjs='train', internal_folder='data/internal'):
     """ 
     Given the transform_data_dict, compute the maximal power features
     Inputs:
@@ -56,9 +56,9 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
     else:
         percentile_edges = None
     power_params = {'power_increment': power_increment, 'num_powers': num_powers} if percentile_edge_method == 'automated' else {'percentile_edges': percentile_edges}
-    du.clean_params_path(savepath)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
     power_params['choose_subjs'] = choose_subjs
-    savepath, found_match = du.check_and_make_params_folder(savepath, power_params, save_early=False)
+    savepath, found_match = du.check_and_make_params_folder(savepath, power_params, save_early=False, skip_ui=skip_ui)
 
     if found_match:
         combined_power_df = pd.read_csv(os.path.join(savepath, 'maximal_power_df.csv'), index_col=0)
@@ -67,7 +67,7 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
         # load the power spectral density data
         if transform_data_dict is None:
             loadtime = time.time()
-            transform_data_dict = td.main()
+            transform_data_dict = td.main(skip_ui=skip_ui)
             print('Time taken to load data: ', time.time() - loadtime)
         channels = list(transform_data_dict['channels'])
         ROI_DICT['Full'] = channels

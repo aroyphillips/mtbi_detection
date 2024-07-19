@@ -284,7 +284,7 @@ def make_dummy_bands(basis='custom', divisions=2, log_division=False, custom_ban
     dummy_bands = dict(zip(dummy_keys, bands))
     return dummy_bands
 
-def main(network_params, open_closed_params, channels, verbosity=1, save=True, featurepath=FEATUREPATH, choose_subjs='train', internal_folder='data/internal/'):
+def main(network_params, open_closed_params, channels, verbosity=1, save=True, skip_ui=False, featurepath=FEATUREPATH, choose_subjs='train', internal_folder='data/internal/'):
     """
     Given parameters to make the networks, compute the network features and save them to a csv file
     NOTE: loads all the segmented EO/EC data into RAM
@@ -305,8 +305,8 @@ def main(network_params, open_closed_params, channels, verbosity=1, save=True, f
     networktime=time.time()
     all_params = du.make_dict_saveable({**network_params, **open_closed_params, 'channels': list(channels), 'choose_subjs': choose_subjs})
     network_feature_path = os.path.join(featurepath, 'network_features')
-    du.clean_params_path(network_feature_path)
-    network_feature_savepath, found_match = du.check_and_make_params_folder(network_feature_path, all_params)
+    du.clean_params_path(network_feature_path, skip_ui=skip_ui)
+    network_feature_savepath, found_match = du.check_and_make_params_folder(network_feature_path, all_params, skip_ui=skip_ui)
     savefilename = os.path.join(network_feature_savepath, 'defined_network_features.csv')
     if found_match:
         if verbosity > 0:

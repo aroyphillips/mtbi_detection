@@ -1445,7 +1445,7 @@ def _run_tests():
 
 
 def main(open_closed_params, transform_params, open_closed_path=LOCD_DATAPATH, featurepath=FEATUREPATH, num_load_subjs=151, n_jobs=1, random_load=False, internal_folder='data/internal/', which_psd_segment='avg', \
-         band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, fs_baseline=500, l_freq=0.3, h_freq=250,  choose_subjs='train', remove_noise=True, log_freqs=False, verbose=0):
+         band_basis='custom', max_n_peaks=5, aperiodic_mode='knee', prominence=0.5, fs_baseline=500, l_freq=0.3, h_freq=250,  choose_subjs='train', remove_noise=True, log_freqs=False, skip_ui=False, verbose=0):
     """
     Extracts the parameterized spectra as a dataframe from PSD data
     Inputs:
@@ -1473,8 +1473,8 @@ def main(open_closed_params, transform_params, open_closed_path=LOCD_DATAPATH, f
                                             num_load_subjs=num_load_subjs, random_load=random_load, choose_subjs=choose_subjs)
     parameterized_savepath = os.path.join(featurepath, 'parameterized_psds')
     all_params = du.make_dict_saveable({**transform_params, **open_closed_params, **model_params})
-    du.clean_params_path(parameterized_savepath)
-    savepath, found_match = du.check_and_make_params_folder(parameterized_savepath, all_params)
+    du.clean_params_path(parameterized_savepath, skip_ui=skip_ui)
+    savepath, found_match = du.check_and_make_params_folder(parameterized_savepath, all_params, skip_ui=skip_ui)
     savefilename = os.path.join(savepath, 'spectral_parameters.csv')
     if found_match:
         if verbose > 0:
@@ -1488,7 +1488,7 @@ def main(open_closed_params, transform_params, open_closed_path=LOCD_DATAPATH, f
         num_load_subjs = model_params['num_load_subjs']
         random_load = model_params['random_load']
 
-        transform_data_pathdict = td.main(locd_params=open_closed_params, locd_savepath=open_closed_path, n_jobs=1, as_paths=True, **transform_params)
+        transform_data_pathdict = td.main(locd_params=open_closed_params, locd_savepath=open_closed_path, n_jobs=1, as_paths=True, skip_ui=skip_ui, **transform_params)
         select_pathdict = select_datapathdict(fu.select_subjects_from_dict(transform_data_pathdict['subj_data'], choose_subjs, internal_folder=internal_folder), num_load_subjs=num_load_subjs, random_load=random_load, which_psd_segment=which_psd_segment)
         channels = transform_data_pathdict['channels']
         freqs = transform_data_pathdict['common_freqs']

@@ -45,15 +45,15 @@ import mtbi_detection.data.data_utils as du
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1]), 'features'))
-RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1]), 'results'))
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
+RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
 
 
 # set the random seed
 np.random.seed(88)
 def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
          search_method='bayes', n_points=1, n_iterations=100, results_savepath=RESULTS_SAVEPATH, choose_subjs='train', featurepath=FEATUREPATH,
-         verbosity=10,  n_fs_repeats=2, n_hyper_repeats=2, internal_folder='data/internal', **kwargs):
+         verbosity=10,  n_fs_repeats=2, n_hyper_repeats=2, internal_folder='data/internal', skip_ui=False, **kwargs):
     """
     Trains the baselearner specified by model_name on the features specified by which_features
  
@@ -84,11 +84,11 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     assert model_name in ['GaussianNB', 'LogisticRegression', 'AdaBoost', 'KNeighborsClassifier', 'RandomForestClassifier', 'XGBClassifier', 'all'], f"Model name {model_name} not recognized"
     
     # save the best modelß
-    results_savepath = os.path.join(results_savepath, 'base_learners')
-    du.clean_params_path(results_savepath)
+    results_savepath = os.path.join(results_savepath, 'baselearners')
+    du.clean_params_path(results_savepath, skip_ui=skip_ui)
     caf_params = caf.extract_all_params(choose_subjs=choose_subjs, **kwargs)
     all_params = {**caf_params, 'which_feaures': which_features}
-    savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params)
+    savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params, skip_ui=skip_ui)
 
     totaltime = time.time()
     
@@ -114,7 +114,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
     assert set(which_features).issubset(valid_featuresets), f"which_features must be a subset of {valid_featuresets}, but got {which_features}"
     
-    all_feature_df, col_mapping = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='train', internal_folder=internal_folder, **kwargs)
+    all_feature_df, col_mapping = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, skip_ui=skip_ui, choose_subjs='train', internal_folder=internal_folder, **kwargs)
 
 
     currtime = time.strftime("%Y%m%d%H%M%S")
@@ -422,7 +422,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
     return search
 
-def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosity=0, choose_subjs='train', internal_folder='data/internal/', **kwargs):
+def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosity=0, skip_ui=False, choose_subjs='train', internal_folder='data/internal/', **kwargs):
     """
     Load the EEG, ECG, or symptoms data
     Inputs:
@@ -436,7 +436,7 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
         - col_mapping: dictionary specifying which columns belong to each feature set
     """ 
     print("Returning only the following features:", which_features)
-    feature_subset_dfs = caf.main(verbosity=verbosity, n_jobs=n_jobs, return_separate=True, choose_subjs=choose_subjs, **kwargs)
+    feature_subset_dfs = caf.main(verbosity=verbosity, n_jobs=n_jobs, return_separate=True, skip_ui=skip_ui, choose_subjs=choose_subjs, **kwargs)
     print(f"Dataset: {feature_subset_dfs.keys()}")
     print(f"Features wanted: {which_features}")
     all_feature_dfs = []
@@ -630,15 +630,14 @@ if __name__ == '__main__':
     parser.add_argument('--n_fs_cv', type=int, default=2, help="The number of folds to use for the inner cross validation")
     parser.add_argument('--n_fs_repeats', type=int, default=3, help="The number of times to repeat the feature cv")
     parser.add_argument('--n_hyper_repeats', type=int, default=3, help="The number of times to repeat the hyperparameter cv")
-    parser.add_argument('--kfolds', type=int, default=10, help="The number of folds to use for the kfold cross validation")
-    parser.add_argument('--step', type=float, default=0.05, help="The step to use for the recursive feature elimination")
     parser.add_argument('--search_method', type=str, default='bayes', help="The search method to use for the grid search")
     parser.add_argument('--n_iterations', type=int, default=100, help="The number of random iterations to use for the random search")
     parser.add_argument('--n_points', type=int, default=1, help="The number of points to use for the bayesian search")
-    parser.add_argument('--wrapper_method', type=str, default='recursive', help="The selector method to use for the grid search")
-    parser.add_argument('--sequential_tol', type=float, default=0.0, help="The tolerance to use for the sequential feature selector")
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
     parser.add_argument('--model_name', type=str, default='XGBClassifier', help="The ndame of the model to use")
+    parser.add_argument('--outer_jobs', type=int, default=1, help="The number of jobs to use for the outer grid search")
+    parser.add_argument('--inner_jobs', type=int, default=1, help="The number of jobs to use for the inner grid search")
+    parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
     parser.add_argument('--scoring', type=str, default='mcc', help="The scoring method to use for the grid search")
 
 
