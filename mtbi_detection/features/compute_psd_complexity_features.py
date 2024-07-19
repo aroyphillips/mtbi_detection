@@ -10,7 +10,7 @@ import mtbi_detection.data.transform_data as td
 import mtbi_detection.features.feature_utils as fu
 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 def get_features_from_stack(feature_func, stacked_data, feature_metrics, subjs, channels, verbosity=1):
     """

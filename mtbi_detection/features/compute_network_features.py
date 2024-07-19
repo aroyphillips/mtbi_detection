@@ -17,7 +17,7 @@ import mtbi_detection.features._make_defined_network as mdn
 import mtbi_detection.data.load_open_closed_data as locd
 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 # get the eigendecomposition of the laplacian:
 def eigendecomposition(L):

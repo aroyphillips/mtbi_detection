@@ -25,7 +25,7 @@ import mtbi_detection.features.compute_parameterized_spectral_features as cpsf
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
 roi_dict = {
@@ -84,12 +84,16 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     du.clean_params_path(savepath)
     featurepath, _ = du.check_and_make_params_folder(savepath, {**locd_params, **td_params}, make_new_paramdir=True, save_early=True)
     
+
+    all_features = {}
     # psd features
     print("Computing PSD powers and ratios")
     psdtime = time.time()
     psd_params = extract_power_params(**kwargs)
     band_powers = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=False, channels=channels, state='all', save=True, featurepath=featurepath, **psd_params)
     band_ratios = cpf.compute_psd_features(transform_data_dict, choose_subjs=choose_subjs, ratio=True, channels=channels, state='all', save=True, featurepath=featurepath, **psd_params)
+    all_features['band_powers'] = band_powers
+    all_features['band_ratios'] = band_ratios
     print(f"Finished computing PSD features in {time.time()-psdtime} seconds, band_powers shape: {band_powers.shape}, band_ratios shape: {band_ratios.shape}")
 
     # maximal power features
@@ -97,6 +101,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     maximtime = time.time()
     maximal_power_params = {'power_increment': kwargs['power_increment'], 'num_powers': kwargs['num_powers'], 'percentile_edge_method': kwargs['percentile_edge_method'], 'choose_subjs': choose_subjs}
     maximal_power_df = cmpf.main(transform_data_dict=transform_data_dict, save=True, featurepath=featurepath, internal_folder=internal_folder, **maximal_power_params)
+    all_features['maximal_power'] = maximal_power_df
     print(f"Finished computing maximal power features in {time.time()-maximtime} seconds, feature array shape: {maximal_power_df.shape}")
 
     # sef features
@@ -104,6 +109,7 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     seftime = time.time()
     sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method'], 'choose_subjs': choose_subjs}
     sef_df = csef.main(transform_data_dict, channels=channels, save=True, featurepath=featurepath, internal_folder=internal_folder, **sef_params)
+    all_features['spectral_edge'] = sef_df
     print(f"Finished computing spectral edge features in {time.time()-seftime} seconds, feature array shape: {sef_df.shape}")
 
     # complexity features
@@ -111,12 +117,14 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     complexityt = time.time()
     complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': choose_subjs}
     complexity_feature_df = ccf.main(open_closed_params=locd_params, channels=channels, save=True, featurepath=featurepath, verbosity=kwargs['verbosity'], internal_folder=internal_folder, **complexity_params)
+    all_features['complexity'] = complexity_feature_df
     print(f"Finished computing complexity features in {time.time()-complexityt} seconds, feature array shape: {complexity_feature_df.shape}")
 
     # psd complexity features
     print("Computing PSD complexity features")
     complexityp = time.time()
-    psd_complexity_feature_df = cpcf.main(locd_params, td_params, channels, open_closed_path=open_closed_path, choose_subjs='train', featurepath=featurepath, internal_folder=internal_folder, verbosity=kwargs['verbosity'], save=True)
+    psd_complexity_feature_df = cpcf.main(locd_params, td_params, channels, open_closed_path=open_closed_path, choose_subjs=choose_subjs, featurepath=featurepath, internal_folder=internal_folder, verbosity=kwargs['verbosity'], save=True)
+    all_features['spectral_complexity'] = psd_complexity_feature_df
     print(f"Finished computing PSD complexity features in {time.time()-complexityp} seconds, feature array shape: {psd_complexity_feature_df.shape}")
 
     # compute the network features
@@ -124,13 +132,15 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     networkt = time.time()
     network_params = extract_network_params(**kwargs)
     network_feature_df = cnf.main(network_params, locd_params, channels, verbosity=kwargs['verbosity'], save=True, featurepath=featurepath, choose_subjs=choose_subjs, internal_folder=internal_folder)
+    all_features['network_features'] = network_feature_df
     print(f"Finished computing network features in {time.time()-networkt} seconds, feature array shape: {network_feature_df.shape}")        
 
     # Parameterized PSD features
     print(f"Computing Parameterized Spectra features")
     param_spectra_params = extract_parameterized_spectra_params(**kwargs, choose_subjs=choose_subjs)
-    spectral_features_df = cpsf.main(locd_params, td_params, open_closed_path=open_closed_path, featurepath=featurepath, internal_folder=internal_folder, remove_noise=True, **param_spectra_params)
-    print(f"Finished computing parameterized spectra features in {time.time()-networkt} seconds, feature array shape: {spectral_features_df.shape}")
+    spectral_parameterization = cpsf.main(locd_params, td_params, open_closed_path=open_closed_path, featurepath=featurepath, internal_folder=internal_folder, n_jobs=kwargs['n_jobs'], remove_noise=True, **param_spectra_params)
+    all_features['spectral_parameterization'] = spectral_parameterization
+    print(f"Finished computing parameterized spectra features in {time.time()-networkt} seconds, feature array shape: {spectral_parameterization.shape}")
 
 
     ## ecg features
@@ -190,18 +200,14 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     #             out_dfs[key] = df.loc[[s for s in df.index if int(s) in load_subjs]]
 
     
-    # if return_separate:
-    #     print(f"Made separate dataframes in {time.time()-starttime} seconds")
-    #     return out_dfs
-    # else:
-    #     full_feature_df = pd.concat([df for df in out_dfs.values() if df is not None], axis=1)
-    #     # if use_regional:
-    #     #     full_feature_df = pd.concat([band_powers, band_ratios, merged_regional_psd_df, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, network_feature_df], axis=1)
-    #     # else:
-    #     #     full_feature_df = pd.concat([band_powers, band_ratios, maximal_power_df, sef_df, complexity_feature_df, psd_complexity_feature_df, network_feature_df], axis=1)
-    #     print(f"Made full dataframe {full_feature_df.shape} in {time.time()-starttime} seconds")
+    if return_separate:
+        print(f"Made separate dataframes in {time.time()-starttime} seconds")
+        return all_features
+    else:
+        full_feature_df = pd.concat([df for df in all_features.values() if df is not None], axis=1)
+        print(f"Made full dataframe {full_feature_df.shape} in {time.time()-starttime} seconds")
         
-    #     return full_feature_df
+        return full_feature_df
     
 def load_full_feature_df(savepath='/shared/roy/mTBI/saved_processed_data/mission_connect/all_features', **kwargs):
     full_feature_df = main(savepath=savepath, **kwargs)
@@ -286,10 +292,12 @@ def extract_all_params(**kwargs):
     sef_params = {'edge_increment': kwargs['edge_increment'], 'num_edges': kwargs['num_edges'], 'log_edges':kwargs['log_edges'], 'reverse_log': kwargs['reverse_log'], 'spectral_edge_method': kwargs['spectral_edge_method'], 'choose_subjs': kwargs['choose_subjs']}
     complexity_params = {'window_len': kwargs['window_len'], 'overlap': kwargs['overlap'], 'choose_subjs': kwargs['choose_subjs']}
     network_params = extract_network_params(**kwargs)
-    param_spectra_params = extract_parameterized_spectra_params(**kwargs, choose_subjs=kwargs['choose_subjs'])
+    param_spectra_params = extract_parameterized_spectra_params(**kwargs)
     all_params = {}
+    # ignore_keys=['n_jobs']
     for param_set in [locd_params, td_params, psd_params, maximal_power_params, sef_params, complexity_params, network_params, param_spectra_params]:
         for key, val in param_set.items():
+            # if key not in ignore_keys:
             all_params[key] = val
     return all_params
     
@@ -356,12 +364,10 @@ def extract_parameterized_spectra_params(**kwargs):
         'band_basis': kwargs['ps_band_basis'],
         'aperiodic_mode': kwargs['aperiodic_mode'],
         'log_freqs': True,
-        'choose_subjs': 'train',
+        'choose_subjs': kwargs['choose_subjs'],
         'l_freq': kwargs['l_freq'],
         'h_freq': kwargs['h_freq'],
         'fs_baseline': kwargs['fs_baseline'],
-        'choose_subjs': kwargs['choose_subjs'],
-        'n_jobs': kwargs['n_jobs'],
         'num_load_subjs': 151,
         'random_load': False
     }

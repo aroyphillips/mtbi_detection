@@ -11,7 +11,7 @@ import mtbi_detection.data.data_utils as du
 
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz', 'T3','T4','T5','T6']
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 def get_spectral_edges(psd, freqs, channels=CHANNELS, spectral_edges=None, edge_increment=None, num_edges=None, log_edges=True, reverse_log=False, chan_axis=0, return_edge_names=True):
     """

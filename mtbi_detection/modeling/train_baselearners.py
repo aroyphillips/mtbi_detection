@@ -45,14 +45,14 @@ import mtbi_detection.data.data_utils as du
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
-RESULTS_SAVEPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'results')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1]), 'features'))
+RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1]), 'results'))
 
 
 # set the random seed
 np.random.seed(88)
 def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
-         search_method='bayes', n_points=1, n_iterations=100, results_savepath=RESULTS_SAVEPATH, featurepath=FEATUREPATH,
+         search_method='bayes', n_points=1, n_iterations=100, results_savepath=RESULTS_SAVEPATH, choose_subjs='train', featurepath=FEATUREPATH,
          verbosity=10,  n_fs_repeats=2, n_hyper_repeats=2, internal_folder='data/internal', **kwargs):
     """
     Trains the baselearner specified by model_name on the features specified by which_features
@@ -86,7 +86,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     # save the best modelß
     results_savepath = os.path.join(results_savepath, 'base_learners')
     du.clean_params_path(results_savepath)
-    caf_params = caf.extract_all_params(**kwargs)
+    caf_params = caf.extract_all_params(choose_subjs=choose_subjs, **kwargs)
     all_params = {**caf_params, 'which_feaures': which_features}
     savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params)
 
@@ -114,7 +114,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
     assert set(which_features).issubset(valid_featuresets), f"which_features must be a subset of {valid_featuresets}, but got {which_features}"
     
-    col_mapping, all_feature_df = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='train', internal_folder=internal_folder, **kwargs)
+    all_feature_df, col_mapping = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='train', internal_folder=internal_folder, **kwargs)
 
 
     currtime = time.strftime("%Y%m%d%H%M%S")
@@ -128,19 +128,19 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     groups_train = X_train.index.values.astype(int)
 
 
-    _, X_ival = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='ival', internal_folder=internal_folder, **kwargs)
-    _, X_holdout = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='holdout', internal_folder=internal_folder, **kwargs)
+    X_ival, _ = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='ival', internal_folder=internal_folder, **kwargs)
+    X_holdout,_ = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='holdout', internal_folder=internal_folder, **kwargs)
     y_ival = fu.get_y_from_df(X_ival)
     y_holdout = fu.get_y_from_df(X_holdout)
-    groups_ival = X_ival.index
-    groups_holdout = X_holdout.index
+    groups_ival = X_ival.index.values.astype(int)
+    groups_holdout = X_holdout.index.values.astype(int)
 
     assert np.intersect1d(groups_train, groups_ival).size == 0, "Train and ival sets are not disjoint"
     assert np.intersect1d(groups_train, groups_holdout).size == 0, "Train and holdout sets are not disjoint"
     assert np.intersect1d(groups_ival, groups_holdout).size == 0, "Ival and holdout sets are not disjoint"
-    assert np.intersect1d(X_train.index, X_ival.index).size == 0, "Train and ival sets are not disjoint"
-    assert np.intersect1d(X_train.index, X_holdout.index).size == 0, "Train and holdout sets are not disjoint"
-    assert np.intersect1d(X_ival.index, X_holdout.index).size == 0, "Ival and holdout sets are not disjoint"
+    # assert np.intersect1d(X_train.index, X_ival.index).size == 0, "Train and ival sets are not disjoint"
+    # assert np.intersect1d(X_train.index, X_holdout.index).size == 0, "Train and holdout sets are not disjoint"
+    # assert np.intersect1d(X_ival.index, X_holdout.index).size == 0, "Ival and holdout sets are not disjoint"
 
     # save the data
     trainfeaturesavepath = os.path.join(savepath, f"{'-'.join(which_features)}_X_train.csv")
@@ -418,7 +418,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     with open(os.path.join(savepath, f"{filebasename}_caf_kwargs.json"), 'w') as f:
         json.dump(kwargs, f, indent=4)
 
-    print(f"Saved results: total time to here: {time.time() - totaltime}")
+    print(f"Saved results to {savepath}: total time to here: {time.time() - totaltime}")
 
     return search
 
@@ -444,7 +444,7 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
 
     if 'eeg' in which_features:
         all_eeg_feature_df = pd.concat([df for df in feature_subset_dfs.values()], axis=1)
-        col_mapping['eeg'] == all_eeg_feature_df.columns
+        col_mapping['eeg'] = all_eeg_feature_df.columns
         all_feature_dfs.append(all_eeg_feature_df)
         
     if 'ecg' in which_features:
@@ -462,11 +462,11 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
         col_mapping['selectsym'] = selectsym_feature_df.columns
         all_feature_dfs.append(selectsym_feature_df)
 
-    assert len(col_mapping.keys()) == len(feature_subset_dfs)
+    assert len(col_mapping.keys()) == len(all_feature_dfs)
     assert set(col_mapping) == set(which_features)
-    if len(feature_subset_dfs) == 1:
+    if len(all_feature_dfs) == 1:
         all_feature_df = all_feature_dfs[0]
-    elif len(feature_subset_dfs) > 1:
+    elif len(all_feature_dfs) > 1:
 
         overlapping_subjs = np.intersect1d([df.index for df in all_feature_dfs])
         all_feature_df = pd.concat(all_feature_dfs, axis=1)
@@ -474,7 +474,7 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
     else:
         raise RuntimeError(f"Error no feature sets detected for features {which_features}")
     subjs = all_feature_df.index
-    assert set(subjs) == fu.select_subjects_from_dataframe(all_feature_df, choose_subjs=choose_subjs, internal_folder=internal_folder)
+    assert set(subjs) == set(fu.select_subjects_from_dataframe(all_feature_df, choose_subjs=choose_subjs, internal_folder=internal_folder).index)
     return all_feature_df, col_mapping
 
 
@@ -553,7 +553,6 @@ def extract_diff_dict(big_dict, sub_dict):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--savepath', type=str, default='/shared/roy/mTBI/saved_processed_data/mission_connect/all_features/')
     ## LOCD params
     parser.add_argument('--l_freq', type=float, default=0.3)
     parser.add_argument('--h_freq', type=float, default=None)
@@ -623,7 +622,6 @@ if __name__ == '__main__':
     parser.add_argument('--symptoms_only', action=argparse.BooleanOptionalAction, default=True, help='Whether to use symptoms features')
     
     ## general params
-    parser.add_argument('--choose_subjs', type=str, default='train', help='Which subjects to choose from the data')
     parser.add_argument('--verbosity', type=int, default=1, help="The verbosity for the complexity features")
     parser.add_argument('--n_jobs', type=int, default=1)
     
@@ -646,13 +644,13 @@ if __name__ == '__main__':
 
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg','ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     
     pprint.pprint(args)
     # ask the user to continue
-    data_args = caf.extract_all_params(**vars(args))
+    data_args = caf.extract_all_params(choose_subjs='train', **vars(args))
     main_args = extract_diff_dict(vars(args), data_args)
 
     main(**main_args, **data_args)

@@ -32,7 +32,7 @@ ROI_DICT = {
 }
 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None, num_powers=20, percentile_edge_method='automated', save=True, choose_subjs='train', internal_folder='data/internal'):
     """ 

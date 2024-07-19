@@ -11,7 +11,7 @@ import mtbi_detection.features.feature_utils as fu
 
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz','T3','T4','T5','T6']
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
 def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, channels=CHANNELS, state='all', band_method='custom', bin_methods='all',verbosity=0, l_freq=0.3, fs=500, save=True, internal_folder='data/internal/', featurepath=FEATUREPATH):

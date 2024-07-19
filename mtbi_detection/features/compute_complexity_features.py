@@ -15,7 +15,7 @@ import mtbi_detection.features.feature_utils as fu
 
 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 ### Feature Extraction code
 def get_entropy_features_from_epochs(data, fs=500, metrics = ['perm_entropy', 'svd_entropy', 'app_entropy', 'sample_entropy']) -> NDArray:

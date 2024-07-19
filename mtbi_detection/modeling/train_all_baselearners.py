@@ -31,8 +31,9 @@ MODEL_NAME_DICT = {
 
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
-FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
-RESULTS_SAVEPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'results', 'base_learners')
+FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
+RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results', 'base_learners')
+OUTBASE = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'outfiles')
 
 def check_if_previous_run(feat_shortcuts, model_shortcut, datapath=RESULTS_SAVEPATH, n_prior_files=None, verbose=True):
     """
@@ -84,25 +85,46 @@ def get_avg_idle_cores(duration=30):
     n_idle_cores = sum(1 for i in avg_usage if i == 0.0)
     return avg_usage, n_idle_cores
 
+def generate_filtered_permutations(feat_shortcuts, exclusions=None):
+    """
+    Generates all combinations of elements from feat_shortcuts,
+    
+    Inputs:
+        - feat_shortcuts: List of feature shortcuts.
+        - exclusions: List of feature shortcuts to exclude from the permutations when they are present
+    Outputs:
+        - all_permutationsList of filtered permutations.
+    """
+    all_permutations = []
+    for k in range(1, len(feat_shortcuts) + 1):
+        for perm in itertools.combinations(feat_shortcuts, k):
+            if exclusions is not None:
+                if not all([excl in perm for excl in exclusions]):
+                    all_permutations.append(list(perm))
+            else:
+                all_permutations.append(list(perm))
+    return all_permutations
+
+
 def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", "sym", "sel"],\
          duration=30, hyper_cv=3, fs_cv=3, n_fs_repeats=2, n_iterations=100, n_hyper_repeats=2,\
             results_savepath=RESULTS_SAVEPATH, outbase=None, wait_time=15):
-
-    """"
+    """
     Driver to run train_baselearners.py across all feature sets and base models
-    """"
+    """
     print(f"Beginning to run {n_jobs} jobs in parallel")
     # call the python script with the correct arguments
 
-    base_call = ("python3 src/models/new_split_faster_full_cv_options.py --scoring=mcc --method={ref_method} --n_jobs={n_jobs} --{filter_ecg} --{late_filter_ecg} "
-                 "--hyper_cv={hyper_cv} --fs_cv={fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats} --wrapper_method={wrapper_method} "
+    base_call = ("python3 src/models/new_split_faster_full_cv_options.py --scoring=mcc --ref_method=CSD --n_jobs={n_jobs}"
+                 "--hyper_cv={hyper_cv} --fs_cv={fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats}"
                  "--model_name={model_name} --n_iterations={n_iterations} --n_points={n_points} "
                  "--results_savepath={results_savepath} --which_features {which_features0} {which_features1} {which_features2} "
                  "{out_appdx}")
     n_total_runs = 0
     curr_run = 0
     model_shortcuts = ["xgb", "rf", "knn",  "gnb", "ada", "lre"] 
-    for feat_shortcut in feat_shortcuts:
+    all_permutations = generate_filtered_permutations(feat_shortcuts, exclusions=["sel", "sym"])
+    for feat_shortcut in all_permutations:
         for model_shortcut in model_shortcuts:
             if check_if_previous_run(feat_shortcut, model_shortcut, datapath=results_savepath)[1]:
                 continue
@@ -110,10 +132,8 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                 n_total_runs += 1
     print(f"Total number of runs: {n_total_runs}")
     max_n_jobs = np.copy(n_jobs)
-    all_permutations = [list(perm) for perm in itertools.combination(feat_shortcuts) if not ('sel' in perm and 'sym' in perm)]
     for feat_shortcuts in all_permutations:
         for model_shortcut in model_shortcuts:
-            cv_status = pd.read_csv("data/tables/cv_status.csv")
             if check_if_previous_run(feat_shortcut, model_shortcut, datapath=results_savepath)[1]: 
                 continue
             else:
@@ -131,7 +151,7 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                         # n_jobs = max_n_jobs if max_n_jobs is not None else n_points*6
                         n_jobs = max(int(idle_cores), int(max_n_jobs//2))
                 if outbase is not None:
-                    out_file = os.path.join(outbase, f"{feat_shortcut}_{model_shortcut}.out")
+                    out_file = os.path.join(outbase, f"{'-'.join(feat_shortcut)}_{model_shortcut}_out.txt")
                     out_appdx = f"> {out_file}"
                 else:
                     out_appdx = ''
@@ -155,10 +175,10 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                 call = base_call.format(n_jobs=n_jobs, 
                                         model_name=MODEL_NAME_DICT[model_shortcut], n_points=n_points, 
                                         which_features0=which_features0, which_features1=which_features1,
-                                        which_features2=which_features2, out_file=out_file,
+                                        which_features2=which_features2,
                                         results_savepath=results_savepath,
                                         hyper_cv=hyper_cv, fs_cv=fs_cv, n_fs_repeats=n_fs_repeats, 
-                                        n_hyper_repeats=n_hyper_repeats, n_iterations=n_iterations)
+                                        n_hyper_repeats=n_hyper_repeats, n_iterations=n_iterations, out_appdx=out_appdx)
                 print(call)
                 try:
                     uin = inputimeout("Is this correct? [y/n]: ", timeout=wait_time)
@@ -173,11 +193,11 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                     sys.exit(0)
                 # wait until the job is done
                 time.sleep(min_run_time*60)
-                n_files, finished = check_if_previous_run(feat_shortcut, model_shortcut, skip_confirmation=True, n_prior_files=None,datapath=results_savepath)
-                print(f"Number of files when finish={finished}: {n_files} for feat_shortcut={feat_shortcut}, model_shortcut={model_shortcut}, wrapper_shortcut={wrapper_shortcut}, search_shortcut={search_shortcut}")
+                n_files, finished = check_if_previous_run(feat_shortcut, model_shortcut, n_prior_files=None,datapath=results_savepath)
+                print(f"Number of files when finish={finished}: {n_files} for feat_shortcut={feat_shortcut}, model_shortcut={model_shortcut}")
                 st = time.time()
                 while not finished:
-                    n_files, finished = check_if_previous_run(feat_shortcut, model_shortcut, skip_confirmation=True, n_prior_files=n_files,datapath=results_savepath, verbose=False)
+                    n_files, finished = check_if_previous_run(feat_shortcut, model_shortcut,n_prior_files=n_files,datapath=results_savepath, verbose=False)
                     # every 30 minutes print the status
                     if time.time() - st > 1800:
                         print(f"Still running {feat_shortcut} {model_shortcut} ({curr_run}/{n_total_runs}), files={n_files}")
@@ -185,6 +205,7 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                     time.sleep(1)
                 print(f"Finished in {time.time()-st}", feat_shortcut, model_shortcut)
                         
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run my models sequentially')
@@ -196,13 +217,11 @@ if __name__ == "__main__":
     parser.add_argument('--n_hyper_repeats', type=int, default=2, help='Number of times to repeat the hyperparameter search')
     parser.add_argument('--n_iterations', type=int, default=100, help='Number of iterations for the hyperparameter search')
     parser.add_argument('--min_run_time', type=int, default=0, help='Minimum run time in minutes')
-    parser.add_argument('--reverse_search_order', action=argparse.BooleanOptionalAction, default=False, help='Whether to reverse the search order')
     parser.add_argument('--feat_shortcuts', nargs='+', default=["eeg", "ecg", "sym", "sel"], help='Which features to run')
-    parser.add_argument('--duration', type=int, default=30, help='Duration to check the number of idle cores')
+    parser.add_argument('--duration', type=int, default=2, help='Duration to check the number of idle cores')
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
-    parser.add_argument('--outbase', type=str, default=None, help="The path to save the output files")
-    parser.add_argument('--search_shortcuts', nargs='+', default=["bay"], help="The search methods to use")
-    parser.add_argument('--wait_time', type=int, default=15, help="The time to wait for user response (seconds)")
+    parser.add_argument('--outbase', type=str, default=OUTBASE, help="The path to save the output files")
+    parser.add_argument('--wait_time', type=int, default=3, help="The time to wait for user response (seconds)")
 
     args = parser.parse_args()
 
