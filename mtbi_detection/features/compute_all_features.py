@@ -54,6 +54,7 @@ roi_dict = {
 
 def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_folder='data/internal/', use_regional=False, use_ecg=False, use_symptoms=False, return_separate=False, skip_ui=False, choose_subjs='train', **kwargs):
     
+    print(f"Computing all features: (without user confirmation? [{skip_ui}])")
     if open_closed_path[-1] == '/':
         base_savepath = open_closed_path[:-1]
     else:
@@ -64,13 +65,13 @@ def main(open_closed_path=LOCD_DATAPATH, tables_folder='data/tables/', internal_
     starttime = time.time()
     locd_params = extract_locd_params(**kwargs)
 
-
     # load the data
     print("Loading data")
     loadtime = time.time()
     open_closed_dict = locd.load_open_closed_pathdict(**locd_params, savepath=open_closed_path, skip_ui=skip_ui)
     
     # transform the data
+    print(f"Loading PSD transform data")
     td_params = extract_transform_params(**kwargs)
     transform_data_dict = td.main(locd_params=locd_params, locd_savepath=open_closed_path, n_jobs=kwargs['n_jobs'], as_paths=True, skip_ui=skip_ui, **td_params)
     
