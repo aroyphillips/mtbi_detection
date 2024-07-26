@@ -34,9 +34,10 @@ def main(locd_params = {
         'ecg_thresh': 'auto',
         'ecg_method': 'correlation'
     }, interpolate_spectrum=1000, freq_interp_method='linear',bandwidth=1, which_segment='avg',
-    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH,skip_ui=False, verbose=True):
+    n_jobs=1, save=True, as_paths=True, locd_savepath=LOCD_DATAPATH, skip_ui=False, verbose=True):
     # define loading parameters
-    print("Loading parameters: {}".format(locd_params))
+    print(f"Skipping user confirmation? {skip_ui}")
+    print(f"Loading parameters: {locd_params}")
     params = extract_locd_params(**locd_params)
     params['interpolate_spectrum'] = interpolate_spectrum
     params['bandwidth'] = bandwidth
@@ -48,7 +49,7 @@ def main(locd_params = {
         temp = locd_savepath
     savepath = os.path.join(os.path.dirname(temp), 'psd_transform')
     savepath = du.check_savepath(savepath, skip_ui=skip_ui)
-    du.clean_params_path(savepath)
+    du.clean_params_path(savepath, skip_ui=skip_ui)
 
     found_match = False
     paramfile = 'params.json'

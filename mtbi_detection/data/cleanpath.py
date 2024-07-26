@@ -41,9 +41,9 @@ def cleanpath(path, foldername='params', skip_ui=False):
         if folder == foldername + str(i):
             continue
         if skip_ui:
-            ui = input(f'renaming folder: {os.path.join(path, folder)} to {os.path.join(path, foldername + str(i))}? (y/n)')
+            ui = 'y' 
         else:
-            ui = 'y'
+            ui = input(f'renaming folder: {os.path.join(path, folder)} to {os.path.join(path, foldername + str(i))}? (y/n)')
         if ui == 'y':
             os.rename(os.path.join(path, folder), os.path.join(path, foldername + str(i)))
 

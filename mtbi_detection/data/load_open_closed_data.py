@@ -27,7 +27,7 @@ def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, v
             temp_datapath = datapath
         savepath = os.path.join(os.path.dirname(temp_datapath), 'open_closed_segments')
 
-        savepath = du.check_savepath(savepath)
+        savepath = du.check_savepath(savepath, skip_ui=skip_ui)
 
         du.clean_params_path(savepath, skip_ui=skip_ui)
 

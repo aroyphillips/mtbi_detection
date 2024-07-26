@@ -1,5 +1,5 @@
 ### a general framework to implement and evaluate existing methodologies for detecting mTBI
-### Method A: McNerney (Select Symptoms + Band Powers)
+### Method A: McNerney et al 2019 (Select Symptoms + Band Powers)
 ### Method C: Lewine et al 2019 (Band Power Ratios + Connectivity),
 ### Method B: Thanjavur 2021 (Raw LSTM), 
 
@@ -211,8 +211,12 @@ def methoda_extract_eeg_features(psd_array, channels, groups, psd_freqs):
     eeg_features_df = pd.DataFrame(eeg_features, columns=[f'{ch}_{band}' for ch in channels for band in freq_bins.keys()], index=groups)
     return eeg_features_df
 
-def methoda_load_symptoms():
-    symptoms = ls.load_symptoms()
+def methoda_load_symptoms(choose_subjs='train', verbose=False, symptoms_only=True, with_nans=False, internal_folder='data/internal/'):
+    """
+    Loads the select symptoms for Method A: 
+    our implementation of McNerney et al 2019
+    """
+    symptoms = ls.load_symptoms(choose_subjs, verbose=verbose, symptoms_only=symptoms_only, with_nans=with_nans, internal_folder=internal_folder)
     symp_cols = ['InjHx_FITBIR.LOC AOC and PTA.LOCDurationVal', 'Rivermead.Questionnaire.RPQHeadachesScale', 'Rivermead.Questionnaire.RPQNauseaScale',  'Rivermead.Questionnaire.RPQLightSensScale', 'Rivermead.Questionnaire.RPQNoiseSensScale', 'Rivermead.Questionnaire.RPQLongToThinkScale', 'MACE_FITBIR.Scores.MACEImmdtMemScore']
 
     selected_symp = symptoms[symp_cols]

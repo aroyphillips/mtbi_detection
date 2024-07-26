@@ -575,6 +575,10 @@ def check_savepath(savepath, skip_ui=False):
     Given a savepath, check if the savepath is correct. If it is not, then ask the user for a new savepath
     """
     if skip_ui:
+        # just make sure that the savepath exists
+        if not os.path.exists(savepath):
+            raise ValueError(f"Savepath {savepath} does not exist")
+    else:
         good_savepath = input(f"Savepath: {savepath}, is this correct? (y/n)")
         if good_savepath == 'n':
             savepath = input("Enter new savepath: ")
@@ -582,10 +586,7 @@ def check_savepath(savepath, skip_ui=False):
             print(f"Savepath: {savepath}")
         else:
             raise ValueError(f"Invalid input {good_savepath} instead of y/n. Exiting...")
-    else:
-        # just make sure that the savepath exists
-        if not os.path.exists(savepath):
-            raise ValueError(f"Savepath {savepath} does not exist")
+
     return savepath
 
 def clean_params_path(savepath, skip_ui=False):
