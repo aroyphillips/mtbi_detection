@@ -1,7 +1,8 @@
 ### a general framework to implement and evaluate existing methodologies for detecting mTBI
 ### Method A: McNerney et al 2019 (Select Symptoms + Band Powers)
-### Method C: Lewine et al 2019 (Band Power Ratios + Connectivity),
-### Method B: Thanjavur 2021 (Raw LSTM), 
+### Method B: Thanjavur 2021 (Raw LSTM)
+### Method C: Lewine et al 2019 (Band Power Ratios + Connectivity)
+
 
 
 import numpy as np
@@ -41,11 +42,11 @@ def load_data(internal_folder='data/internal/', methodology='METHODA'):
     """
     split_subjs = ld.load_splits(base_folder=internal_folder)
 
-def get_methodology(methodology='lewine'):
+def get_methodology(methodology='methoda'):
     """
     Returns the classifier pipeline for the given methodology
     Inputs:
-        methodology: str, the methodology to use
+        methodology: str, the methodology to use (methoda, methodb, methodc)
     Outputs:
         methdology_classifier: a tuple that contains a (data preprocessing block, classifier)
         The preprocessing block must take in the dictionary of data and return something that the classifier can use
@@ -226,9 +227,19 @@ def methoda_load_symptoms(choose_subjs='train', verbose=False, symptoms_only=Tru
     binary_selected_symp = selected_symp.copy()
     # now turn all non 0 values to 1
     binary_selected_symp[binary_selected_symp != 0] = 1
+    
+    if choose_subjs == 'train':
+        kmeans_mem_df = du.sorted_cluster_labeling(selected_symp, 'MACE_FITBIR.Scores.MACEImmdtMemScore', n_clusters=7)
+        kmeans_loc_df = du.sorted_cluster_labeling(selected_symp, 'InjHx_FITBIR.LOC AOC and PTA.LOCDurationVal', n_clusters=7)
 
-    kmeans_mem_df = du.sorted_cluster_labeling(selected_symp, 'MACE_FITBIR.Scores.MACEImmdtMemScore', n_clusters=7)
-    kmeans_loc_df = du.sorted_cluster_labeling(selected_symp, 'InjHx_FITBIR.LOC AOC and PTA.LOCDurationVal', n_clusters=7)
+    else:
+        train_selected_symp = ls.load_symptoms('train', verbose=verbose, symptoms_only=symptoms_only, with_nans=with_nans, internal_folder=internal_folder)
+        train_selected_symp = train_selected_symp[symp_cols]
+        train_selected_symp.loc[:, 'MACE_FITBIR.Scores.MACEImmdtMemScore'] = 15 - train_selected_symp['MACE_FITBIR.Scores.MACEImmdtMemScore']
+        _, mem_kmeans = du.sorted_cluster_labeling(train_selected_symp, 'MACE_FITBIR.Scores.MACEImmdtMemScore', n_clusters=7, return_kmeans=True)
+        _, loc_kmeans = du.sorted_cluster_labeling(train_selected_symp, 'InjHx_FITBIR.LOC AOC and PTA.LOCDurationVal', n_clusters=7, return_kmeans=True)
+        kmeans_mem_df = du.sorted_cluster_labeling(selected_symp, 'MACE_FITBIR.Scores.MACEImmdtMemScore', n_clusters=7, fitted_kmeans=mem_kmeans)
+        kmeans_loc_df = du.sorted_cluster_labeling(selected_symp, 'InjHx_FITBIR.LOC AOC and PTA.LOCDurationVal', n_clusters=7, fitted_kmeans=loc_kmeans)
 
     selected_symp_scores = selected_symp.copy()
     selected_symp_scores['MACE_FITBIR.Scores.MACEImmdtMemScore'] = kmeans_mem_df['Cluster']
@@ -241,6 +252,8 @@ def methoda_load_symptoms(choose_subjs='train', verbose=False, symptoms_only=Tru
     avg_selected_symp = selected_symp_scores.mean(axis=1)
     methoda_symptom_df = binary_selected_symp.copy()
     methoda_symptom_df['Average_Score'] = avg_selected_symp
+
+    assert set(methoda_symptom_df.index) == set(fu.select_subjects_from_dataframe(methoda_symptom_df, choose_subjs, internal_folder).index)
 
     return methoda_symptom_df
 

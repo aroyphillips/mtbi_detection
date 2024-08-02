@@ -6,7 +6,7 @@ import glob
 import json
 import pandas as pd
 import sys
-import sklearn
+from sklearn.cluster import KMeans
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 import mtbi_detection.data.cleanpath as cleanpath
@@ -730,10 +730,13 @@ def make_dict_saveable(dwarray):
                                 print(f"Type {type(v)} not recognized for key {k}")
     return new_dict
 
-def sorted_cluster_labeling(data, column, n_clusters=7, random_state=0):
+def sorted_cluster_labeling(data, column, n_clusters=7, random_state=0, fitted_kmeans=None, return_kmeans=False):
     # Perform k-means clustering
-    kmeans = sklearn.cluster.KMeans(n_clusters=n_clusters, random_state=random_state).fit(data[column].values.reshape(-1, 1))
-    kmeans_df = pd.DataFrame({column: data[column], 'Cluster': kmeans.labels_})
+    if fitted_kmeans is not None:
+        kmeans = fitted_kmeans
+    else:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=random_state).fit(data[column].values.reshape(-1, 1))
+    kmeans_df = pd.DataFrame({column: data[column], 'Cluster': kmeans.predict(data[column].values.reshape(-1, 1))})
 
     # Sort the dataframe by the specified column
     kmeans_df = kmeans_df.sort_values(column)
@@ -751,7 +754,10 @@ def sorted_cluster_labeling(data, column, n_clusters=7, random_state=0):
     # Apply the new mapping to the 'Cluster' column
     kmeans_df['Cluster'] = kmeans_df['Cluster'].map(new_map)
 
-    return kmeans_df
+    if return_kmeans:
+        return kmeans_df, kmeans
+    else:
+        return kmeans_df
 
 def isolate_eeg_channels(channels: list):
     """

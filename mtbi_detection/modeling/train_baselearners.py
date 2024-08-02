@@ -33,7 +33,7 @@ from sklearn.model_selection import RandomizedSearchCV
 
 import mtbi_detection.features.compute_all_features as caf
 import mtbi_detection.features.decollinearizer as deco
-# import mtbi_detection.features.load_ecg_features as lef
+import mtbi_detection.features.compute_ecg_features as cef
 
 from mtbi_detection.features.feature_utils import pearson_corr, spearman_corr, kendall_corr, anova_pinv, UnivariateThresholdSelector
 import mtbi_detection.features.feature_utils as fu
@@ -165,7 +165,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
         print("Making pipeline...")
         param_grid = {}
-        deduper = fu.DropDuplicatedAndConstantColumns(min_unique=n_hyper_cv+n_fs_cv+1)
+        deduper = fu.DropDuplicatedAndConstantColumns(min_unique=2)
         var_thresh = sklearn.feature_selection.VarianceThreshold(threshold=0.0)
         scalers = [RobustScaler(), None]
         param_grid['scaler'] = scalers
@@ -251,8 +251,12 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
             param_grid['deco__prune_method']= ['pearson', 'spearman']
             preprocpipe = Pipeline([('deduper', deduper), ('scaler', scalers[0]), ('median imputer', SimpleImputer(strategy='median')), ('post_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('vart', var_thresh),('filter', feature_filter), ('deco', decollinearizer)])
 
+        selectsym_preprocpipe = Pipeline([('deduper', deduper), ('scaler', scalers[0]), ('median imputer', SimpleImputer(strategy='median')), ('post_nan_imputer', fu.DataFrameImputer(fill_value=0))])
         # ensures the feature selection procedure is performed to each modality separately (ensures the final feature matrix contains features from each modality)
-        preproctransform = ColumnTransformer([(f'{ftname}', preprocpipe, col_mapping[ftname]) for ftname in col_mapping.keys()])
+        inner_col_transformer = [(f'{ftname}', preprocpipe, col_mapping[ftname]) for ftname in col_mapping.keys() if ftname != 'selectsym']
+        if 'selectsym' in col_mapping:
+            inner_col_transformer.append(('selectsym', preprocpipe, col_mapping['selectsym']))
+        preproctransform = ColumnTransformer(inner_col_transformer)
 
         pipe = Pipeline([('preproc', preproctransform), ('wrapper', wrapper), ('out_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('classifier', classifier)])
         preprocsteps = list(preprocpipe.named_steps.keys())
@@ -262,8 +266,13 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
             for step in preprocsteps:
                 if param_name.startswith(step):
                     for ftname in col_mapping.keys():
-                        new_param_name = param_name.replace(step, f'preproc__{ftname}__{step}')
-                        new_param_grid[new_param_name] = param_values
+                        if ftname != 'selectsym':
+                            new_param_name = param_name.replace(step, f'preproc__{ftname}__{step}')
+                            new_param_grid[new_param_name] = param_values
+                        else:
+                            if step in list(selectsym_preprocpipe.named_steps.keys()):
+                                new_param_name = param_name.replace(step, f'preproc__{ftname}__{step}')
+                                new_param_grid[new_param_name] = param_values
                     found_ft = True
                     
             if not found_ft:
@@ -430,6 +439,12 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         with open(os.path.join(savepath, f"params.json"), 'w') as f:
             json.dump(all_params, f)
 
+        print("___TRAIN RESULTS___")
+        mu.print_binary_scores(train_results)
+        print("___________________")
+        print("___INTERNAL VALIDATION (TEST) RESULTS___")
+        mu.print_binary_scores(ival_results)
+        print("__________________")
         print(f"Saved results to {savepath}: total time to here: {time.time() - totaltime}")
 
     return search
@@ -459,7 +474,7 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
         all_feature_dfs.append(all_eeg_feature_df)
         
     if 'ecg' in which_features:
-        all_ecg_feature_df =  lecg.main(featurepath=featurepath, choose_subjs=choose_subjs)
+        all_ecg_feature_df =  cef.load_ecg_features(choose_subjs=choose_subjs, internal_folder=internal_folder)
         col_mapping['ecg'] = all_ecg_feature_df.columns
         all_feature_dfs.append(all_ecg_feature_df)
         
@@ -469,7 +484,7 @@ def load_all_features(which_features, featurepath=FEATUREPATH, n_jobs=1, verbosi
         all_feature_dfs.append(all_symptom_feature_df)
 
     if 'selectsym' in which_features:
-        selectsym_feature_df = omr.load_select_symptoms(featurepath=featurepath, choose_subjs=choose_subjs)
+        selectsym_feature_df = omr.methoda_load_symptoms(choose_subjs=choose_subjs, verbose=False, symptoms_only=True, with_nans=False, internal_folder=internal_folder)
         col_mapping['selectsym'] = selectsym_feature_df.columns
         all_feature_dfs.append(selectsym_feature_df)
 
@@ -548,6 +563,10 @@ def process_feature_df(which_features, feature_subset_dfs):
             col_mapping['symptoms'] = feature_subset_dfs['symptoms'].columns
             if len(col_mapping['symptoms']) == 0:
                 raise ValueError(f"Symptom features not found in {feature_subset_dfs.keys()}")
+        if 'selectsym' in which_features:
+            col_mapping['selectsym'] = feature_subset_dfs['selectsym'].columns
+            if len(col_mapping['selectsym']) == 0:
+                raise ValueError(f"Selectsym features not found in {feature_subset_dfs.keys}")
         col_mapping['eeg'] = [col for col in all_eeg_feature_df.columns if col not in feature_subset_dfs['ecg'].columns and col not in feature_subset_dfs['symptoms'].columns]
     return all_eeg_feature_df, col_mapping
 
@@ -656,7 +675,7 @@ if __name__ == '__main__':
 
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['symptoms', 'eeg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['sym'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     
