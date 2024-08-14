@@ -109,7 +109,7 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
                     n_jobs = max(int(idle_cores), int(max_n_jobs//2))
             if outbase is not None:
                 out_file = os.path.join(outbase, f"{'-'.join(feat_shortcuts)}_{model_shortcut}_out.txt")
-                out_appdx = f"> {out_file}"
+                out_appdx = f"&> {out_file}"
             else:
                 out_appdx = ''
             

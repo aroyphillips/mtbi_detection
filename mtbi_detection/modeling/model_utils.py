@@ -43,6 +43,12 @@ def score_binary_preds(y_pred_proba=None, y_test=None, y_pred=None, verbose=0):
         - auc_pr (float): Area under the precision-recall curve.
     """  
     
+    if y_pred_proba is not None:
+        # positive inf to 1 and negative inf to 0
+        y_pred_proba[y_pred_proba == np.inf] = 1
+        y_pred_proba[y_pred_proba == -np.inf] = 0
+        y_pred_proba[y_pred_proba > 1] = 1
+        y_pred_proba[y_pred_proba < 0] = 0
     
     if y_pred is None:
         if y_pred_proba is None:
@@ -55,6 +61,11 @@ def score_binary_preds(y_pred_proba=None, y_test=None, y_pred=None, verbose=0):
             elif y_pred_proba.shape[1] == 2:
                 y_pred = np.argmax(y_pred_proba, axis=1)
         
+    y_pred[y_pred == np.inf] = 1
+    y_pred[y_pred == -np.inf] = 0
+    y_pred[y_pred > 1] = 1
+    y_pred[y_pred < 0] = 0
+
 
     if verbose > 0:
         print(f"Shapes: y_pred: {y_pred.shape}, y_test: {y_test.shape}")
