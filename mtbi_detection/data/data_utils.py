@@ -598,6 +598,36 @@ def clean_params_path(savepath, skip_ui=False):
     else:
         cleanpath.cleanpath(os.path.join(savepath, 'params'), skip_ui=skip_ui)
     
+def load_path_from_params(basepath, key_mappings, stric_search=True):
+    """
+    Given a basepath to a folder container parameters and a dictionary of key mappings, load the model and return it.
+    Inputs:
+        - basepath (str): The path to the folder containing the parameters
+        - key_mappings (dict): A dictionary of key mappings to load the model
+    Returns:
+        - modelpath (str): The path to the model
+    NOTE: if there are multiple possible paths this will return the first one found
+    """
+    assert 'params' in os.listdir(basepath)
+    params_folder = os.path.join(basepath, 'params')
+    params_folders = [f for f in os.listdir(params_folder) if os.path.isdir(os.path.join(params_folder, f))]
+    modelpath = None
+    for params_folder in params_folders:
+        with open(os.path.join(params_folder, 'params.json'), 'r') as f:
+            params = json.load(f)
+        if not all([key in params.keys() for key in key_mappings.keys()]):
+            if stric_search:
+                raise ValueError(f"Key mappings {key_mappings} not in {params_folder}")
+            else:
+                print(f"Warning: {[key for key in key_mappings.keys() if key not in params.keys()]} not in {params_folder}")
+                continue
+        if all([params[key] == value for key, value in key_mappings.items()]):
+            modelpath = params_folder
+            break
+    if modelpath is None:
+        raise ValueError(f"Model not found in {basepath} with key mappings {key_mappings}")
+    return modelpath
+        
 
 # need a function to repeat the values in a column through nans until the next nonnan value appears
 def replicate_value_through_nans(df, col='SubjectIDNum.21'):

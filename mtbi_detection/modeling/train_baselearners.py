@@ -91,7 +91,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     if not skip_ui:
         du.clean_params_path(results_savepath, skip_ui=skip_ui)
     caf_params = caf.extract_all_params(choose_subjs=choose_subjs, skip_ui=skip_ui, **kwargs)
-    all_params = {**caf_params, 'which_feaures': which_features, 'model_name': model_name, 'wrapper_method': wrapper_method, 'n_jobs': n_jobs, 'n_hyper_cv': n_hyper_cv, 'n_fs_cv': n_fs_cv, 'step': step, 'search_method': search_method, 'n_points': n_points, 'n_iterations': n_iterations, 'n_fs_repeats': n_fs_repeats, 'n_hyper_repeats': n_hyper_repeats}
+    all_params = {**caf_params, 'which_features': which_features, 'model_name': model_name, 'wrapper_method': wrapper_method, 'n_jobs': n_jobs, 'n_hyper_cv': n_hyper_cv, 'n_fs_cv': n_fs_cv, 'step': step, 'search_method': search_method, 'n_points': n_points, 'n_iterations': n_iterations, 'n_fs_repeats': n_fs_repeats, 'n_hyper_repeats': n_hyper_repeats}
     savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params, skip_ui=skip_ui)
     if found_match:
         print(f"Found a match for {all_params} in {savepath}")
@@ -143,6 +143,9 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         groups_ival = X_ival.index.values.astype(int)
         groups_holdout = X_holdout.index.values.astype(int)
 
+        X_ival = X_ival.replace([np.inf, -np.inf], np.nan)
+        X_holdout = X_holdout.replace([np.inf, -np.inf], np.nan)
+
         assert np.intersect1d(groups_train, groups_ival).size == 0, "Train and ival sets are not disjoint"
         assert np.intersect1d(groups_train, groups_holdout).size == 0, "Train and holdout sets are not disjoint"
         assert np.intersect1d(groups_ival, groups_holdout).size == 0, "Ival and holdout sets are not disjoint"
@@ -184,7 +187,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         if wrapper_method == 'recursive':
             # rfecv_estimator = XGBClassifier(max_depth=2)
             rfecv_estimator = RandomForestClassifier(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)
-            wrapper = RFECV(estimator=rfecv_estimator, step=step, cv=fs_cv, scoring=scoring, n_jobs=inner_jobs, min_features_to_select=32, verbose=1)
+            wrapper = RFECV(estimator=rfecv_estimator, step=step, cv=fs_cv, scoring=scoring, n_jobs=inner_jobs, min_features_to_select=32, verbose=0)
             param_grid['wrapper__estimator'] = [RandomForestClassifier(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)]
             param_grid['wrapper__estimator__max_depth'] = [2, 4, 8]
             param_grid['wrapper__estimator__min_samples_leaf'] = [1, 2]
@@ -442,7 +445,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         print("___TRAIN RESULTS___")
         mu.print_binary_scores(train_results)
         print("___________________")
-        print("___INTERNAL VALIDATION (TEST) RESULTS___")
+        print("___TEST SCORES: INTERNAL VALIDATION (TEST) RESULTS___")
         mu.print_binary_scores(ival_results)
         print("__________________")
         print(f"Saved results to {savepath}: total time to here: {time.time() - totaltime}")
@@ -675,7 +678,7 @@ if __name__ == '__main__':
 
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['sym'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     

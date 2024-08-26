@@ -2,7 +2,14 @@
 import numpy as np
 import sklearn
 from sklearn.metrics import roc_curve, roc_auc_score
+import scipy.stats as stats
+import json
+import joblib
+import os 
+import pandas as pd
 
+
+### SCORING 
 def score_binary_preds(y_pred_proba=None, y_test=None, y_pred=None, verbose=0):
     """
     Calculate various evaluation metrics for binary classification predictions.
@@ -147,7 +154,6 @@ def score_binary_preds(y_pred_proba=None, y_test=None, y_pred=None, verbose=0):
         # print("log_loss: ", log_loss)
     return score_dict
 
-
 def score_binary_model(model, X_test, y_test):
     """
     Given a fitted sklearn model, X_test, and y_test, return a dictionary of scores
@@ -185,3 +191,79 @@ def print_binary_scores(score_dict):
             print(f"{possible_scores[score]}: {score_dict[score]}")
         except:
             pass
+
+### Statistical Tests
+
+def mcnemar_exact_conditional_test(n12, n21, p=0.5):
+    """
+    Calculate the exact p-value for McNemar's exact conditional test.
+    This is the probability of at least n12 sucesses out of n12 + n21 trials times 2.
+    H0: p = 0.5
+    H1: p > 0.5 and p < 0.5
+    https://bmcmedresmethodol.biomedcentral.com/articles/10.1186/1471-2288-13-91
+    
+    Parameters:
+    n12: int
+        The number of discordant pairs where the first model was correct.
+    n21: int
+        The number of discordant pairs where the second model was correct.
+    p: float
+        The probability of success (default 0.5).
+    Returns:
+    p: float
+        The p-value of the test.
+    """
+    n = n12 + n21
+    x = min(n12, n21)
+    p = 2* stats.binom.cdf(x, n+1, p) # probability of at most x successes (two-tailed test)
+
+    return p
+
+def mcnemar_midp(n12, n21, p=0.5):
+    """
+    Calculate the mid-p value for McNemar's exact conditional test.
+    This is the probability of at least n12 sucesses out of n12 + n21 trials times 2 with the mid-p correction.
+    H0: p = 0.5
+    H1: p > 0.5 and p < 0.5
+    https://bmcmedresmethodol.biomedcentral.com/articles/10.1186/1471-2288-13-91
+    
+
+    midp = exact_p - binompdf(n12, n, p)
+
+    Parameters:
+    n12: int
+        The number of discordant pairs where the first model was correct.
+    n21: int
+        The number of discordant pairs where the second model was correct.
+    p: float
+        The probability of success (default 0.5).
+    Returns:
+    p: float
+        The p-value of the test.
+    """
+    n = n12 + n21
+    a = min(n12, n21)
+
+    exact_p = mcnemar_exact_conditional_test(n12, n21, p)
+    mid_p = exact_p - stats.binom.pmf(a, n+1, p) # probability of exactly n12 successes
+    return mid_p
+
+### Model Saving and Loading
+def load_model_data(json_filename, load_model=True, load_holdout=False):
+    """
+    Given the full json_filename, return the model, X_train, and X_test data
+    """
+    if load_model:
+        model = joblib.load(json_filename.replace('.json', '.joblib'))
+    else:
+        model = None
+    X_train = pd.read_csv(json_filename.replace('.json', '_X_train.csv'), index_col=0)
+    X_test = pd.read_csv(json_filename.replace('.json', '_X_test.csv'), index_col=0)
+    assert len(set(X_train.index).intersection(set(X_test.index))) == 0
+    if load_holdout:
+        X_holdout = pd.read_csv(json_filename.replace('.json', '_X_holdout.csv'), index_col=0)
+        assert len(set(X_train.index).intersection(set(X_holdout.index))) == 0
+        assert len(set(X_test.index).intersection(set(X_holdout.index))) == 0
+        return model, X_train, X_test, X_holdout
+    else:
+        return model, X_train, X_test
