@@ -955,6 +955,15 @@ def process_mi_X_y(mi_X, mi_y, feature_cols, num_top_features=10):
     return out_dict
 
 def get_y_from_df(df, label_dict=LABEL_DICT):
+    """
+    Returns the binary diagnosis labels from a dataframe that has the index as the subject ID
+    Inputs:
+        df: DataFrame with index as subject ID
+        label_dict: dictionary mapping subject ID to diagnosis (default is LABEL_DICT)
+    Outputs:
+        y: numpy array of binary labels
+    """
+    assert all([int(ind) in label_dict for ind in df.index]), "Not all indices in the dataframe are in the label dictionary"
     return np.array([label_dict[int(ind)] for ind in df.index])
 
 def drop_duplicate_columns(df):

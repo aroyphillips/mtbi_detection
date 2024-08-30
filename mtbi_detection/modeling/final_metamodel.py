@@ -100,19 +100,129 @@ def load_unseen_data(json_filename, dataset, train_subjs, base_folder='data/tabl
         raise ValueError("Only new_split or csd is implemented")
     return X_unseen
 
+def save_split_results(results_dict, fitted_metamodels, results_table, savepath, optional_savables=None):
+    """
+    Given a results dictionary, save the results to a savepath
+    Inputs:
+        results_dict: dictionary with the results
+        results_table: dataframe with the results
+        savepath: path to save the results with json, joblib, and csv files
+    Outputs:
+        saved_results: dictionary with the paths to the saved results
+            {'results_dict': split_results.json, 'results_table': results_table.csv, 'fitted_metamodels': {metamodel_name: metamodelpath}}
+    """
+    os.makedirs(savepath, exist_ok=True)
+    saved_results = {}
+
+    # save the results dictionary
+    saveable_results_dict = du.make_dict_saveable(results_dict)
+    split_results_savepath = os.path.join(savepath, 'split_results.json')
+    json.dump(saveable_results_dict, open(split_results_savepath, 'w'))
+    saved_results['results_dict'] = split_results_savepath
+
+    # save the fitted metamodels
+    for key, val in fitted_metamodels.items():
+        metamodelpath = os.path.join(savepath, f"{key}.joblib")
+        joblib.dump(val, open(metamodelpath, 'wb'))
+        saved_results[key] = metamodelpath
+
+    # save the dataframe
+    results_table_path = os.path.join(savepath, 'results_table.csv')
+    results_table.to_csv(results_table_path)
+    saved_results['results_table'] = results_table_path
+
+    # save the optional savables
+    if optional_savables is not None:
+        for key, val in optional_savables.items():
+            if type(val) == pd.DataFrame:
+                val.to_csv(os.path.join(savepath, f"{key}.csv"))
+                saved_results[key] = os.path.join(savepath, f"{key}.csv")
+            elif type(val) == dict:
+                json.dump(val, open(os.path.join(savepath, f"{key}.json"), 'w'))
+                saved_results[key] = os.path.join(savepath, f"{key}.json")
+            else:
+                raise ValueError(f"Type {type(val)} not implemented")
+
+    return saved_results
+
+def store_cv_results(base_model_results, cv_ensemble_split_dict, metalearners=['rf', 'lr', 'xgb'], n_cv=None, scores = ['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity']):
+    """
+    Grabs the mean and std of my cv ensemble and the base model cv
+    """
+    logo = False if f'test_scores_{metalearners[0]}_{scores[0]}' in cv_ensemble_split_dict['cv_results']['split0'].keys() else True
+    base_split_df = pd.DataFrame(base_model_results['model_splits'])
+    test_scores = {key: {score: [] for score in scores} for key in metalearners}
+    if logo:
+        for metalearner in metalearners:
+            meta_pred_probas = cv_ensemble_split_dict['cv_results']['meta_pred_probas'][metalearner]
+            meta_bin_pred = np.argmax(meta_pred_probas, axis=1)
+            meta_y = cv_ensemble_split_dict['cv_results']['meta_y']
+            meta_groups = cv_ensemble_split_dict['cv_results']['meta_groups']
+            # arbitrarily chunk the results into5  splits
+            cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            for sdx, (train_idx, test_idx) in enumerate(cv.split(meta_pred_probas, meta_y)):
+                test_pred_probas = meta_pred_probas[test_idx]
+                meta_bin_pred = np.argmax(test_pred_probas, axis=1)
+                test_y = meta_y[test_idx]
+                for score in scores:
+                    if score == 'specificity':
+                        metric_score = sklearn.metrics.recall_score(test_y, meta_bin_pred, pos_label=0)
+                    elif score == 'sensitivity':
+                        metric_score = sklearn.metrics.recall_score(test_y, meta_bin_pred, pos_label=1)
+                    elif score == 'balanced_accuracy':
+                        metric_score = sklearn.metrics.balanced_accuracy_score(test_y, meta_bin_pred)
+                    elif score == 'roc_auc':
+                        metric_score = sklearn.metrics.roc_auc_score(test_y, test_pred_probas[:,1])
+                    elif score == 'matthews_corrcoef':
+                        metric_score = sklearn.metrics.matthews_corrcoef(test_y, meta_bin_pred)
+                    else:
+                        raise ValueError(f"Score {score} not implemented")
+                    test_scores[metalearner][score].append(metric_score)
+                    time.sleep(0)
+                    
+    else:
+        for split in cv_ensemble_split_dict['cv_results'].keys():
+            for metalearner in metalearners:
+                if 'split' in split:
+                    for score in scores:
+                        test_scores[metalearner][score].append(cv_ensemble_split_dict['cv_results'][split][f'test_scores_{metalearner}_{score}'])
+
+    out_dict = {
+        'model_splits': base_model_results['model_splits'],
+        'model_best_scores': base_model_results['best_scores'],
+        'model_best_stds': base_model_results['best_stds'],
+        'model_names': base_model_results['clf_names'],
+        'model_mean_best_score': base_model_results['avg_best_score'],
+        'model_pooled_std': base_model_results['pooled_std'],
+        'metalearner_test_scores': test_scores
+    }
+    metamapper = {'rf': 'Random Forest', 'lr': 'Logistic Regression', 'xgb': 'XGBoost'}
+    print(f"Metalearner mean best scores: {[(metamapper[metalearner], np.mean(test_scores[metalearner]['matthews_corrcoef'])) for metalearner in metalearners]}")
+    mean_std_df = pd.DataFrame({
+        'mean_mcc': [np.mean(test_scores[metalearner]['matthews_corrcoef']) for metalearner in metalearners] + [base_model_results['avg_best_score']] + base_split_df.mean(axis=0).tolist(),
+        'std': [np.std(test_scores[metalearner]['matthews_corrcoef']) for metalearner in metalearners] + [base_model_results['pooled_std']] + base_split_df.std(axis=0).tolist()
+    }, index=[f"{metamapper[metalearner]} Metalearner" for metalearner in metalearners]  + [f"Average of selected models"] + base_split_df.columns.tolist())
+    
+    return out_dict, mean_std_df
+
+
+### Model selection
 def select_base_models(dev_pred_df=None, ival_pred_df=None, holdout_pred_df=None, internal_folder='data/internal/', verbose=False):
     """
     Select a base set of binary classifier models using McNemar midp val. Choose all models that are above 0.05 likelihood simlar to the best model on the internal validation set
-    dev_pred_df: dataframe with the predictions on the development set
-    ival_pred_df: dataframe with the predictions on the internal validation set (THIS IS THE SET USED TO SELECT THE MODELS)
-    holdout_pred_df: dataframe with the predictions on the holdout set
+    Inputs:
+        dev_pred_df: dataframe with the predictions on the development set (rows are subjects, columns are model predictions e.g. model1_0, model1_1, model2_0, model2_1)
+        ival_pred_df: dataframe with the predictions on the internal validation set (THIS IS THE SET USED TO SELECT THE MODELS)
+        holdout_pred_df: dataframe with the predictions on the holdout set (optional)
     Returns:
-    dev_select_pred_df: dataframe with the selected predictions on the development set
-    ival_select_pred_df: dataframe with the selected predictions on the internal validation set
-    holdout_select_pred_df: dataframe with the selected predictions on the holdout set
+        dev_select_pred_df: dataframe with the selected predictions on the development set
+        ival_select_pred_df: dataframe with the selected predictions on the internal validation set
+        holdout_select_pred_df: dataframe with the selected predictions on the holdout set
+        model_midps: dictionary with the likelihood that each model is the same as the best model {model0_0: 0.05, model0_1: 0.1, ...}
     """
     assert ival_pred_df is not None, "Must provide internal validation set predictions"
 
+    # create dummy predictions if dev and holdout are not provided
     if dev_pred_df is None:
         dev_subjs = [g for g in ld.load_splits(internal_folder)['train'] if int(g) not in ival_pred_df.index and g not in holdout_pred_df.index]
         if len(dev_subjs) == 0:
@@ -124,42 +234,50 @@ def select_base_models(dev_pred_df=None, ival_pred_df=None, holdout_pred_df=None
             holdout_subjs = [max(ival_pred_df.index) + max(dev_pred_df.index) + 1]
         holdout_pred_df = pd.DataFrame(np.random.random((len(holdout_subjs), len(ival_pred_df.columns))), columns=ival_pred_df.columns, index=holdout_subjs)
         
+    # binarize the predictions
     dev_pos_pred_df = dev_pred_df[dev_pred_df.columns[dev_pred_df.columns.str.endswith('_1')]] >= 0.5
     ival_pos_pred_df = ival_pred_df[ival_pred_df.columns[ival_pred_df.columns.str.endswith('_1')]] >= 0.5
     dev_pos_pred_df = dev_pos_pred_df.astype(int)
     ival_pos_pred_df = ival_pos_pred_df.astype(int)
 
-    dev_y_test = fu.get_y_from_df(dev_pred_df)
-    ival_y_test = fu.get_y_from_df(ival_pred_df)
 
-    # choose the best model
-    all_model_mccs_dev = [sklearn.metrics.matthews_corrcoef(dev_y_test, dev_pos_pred_df[col]) for col in dev_pos_pred_df.columns]
+    # choose the best model based on the internal validation set
+    ival_y_test = fu.get_y_from_df(ival_pred_df)
     all_model_mccs_ival = [sklearn.metrics.matthews_corrcoef(ival_y_test, ival_pos_pred_df[col]) for col in ival_pos_pred_df.columns]
 
     assert ival_pos_pred_df.shape[1] == dev_pos_pred_df.shape[1]
     best_model_idx = np.argmax(all_model_mccs_ival)
 
     # calculate the mcnemar midp likelihood that each other model could be the same as the best model
-    midp_vals = validation_mcnemar_midp(ival_pos_pred_df, best_model_idx, verbose=verbose)
+    model_midps = validation_mcnemar_midp(ival_pos_pred_df, best_model_idx, verbose=verbose)
+
     # select all models that are above 0.05 likelihood
-    selected_cols = [col[:-2] for col, midp in zip(ival_pos_pred_df.columns, midp_vals) if midp > 0.05]
-    col_dict = {col[:-2]: midp for col, midp in zip(ival_pos_pred_df.columns, midp_vals) if midp > 0.05}
+    selected_cols = [col[:-2] for col, midp in model_midps.items() if midp > 0.05]
     dev_select_pred_df = dev_pred_df[[col for col in dev_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
     ival_select_pred_df = ival_pred_df[[col for col in ival_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
     holdout_select_pred_df = holdout_pred_df[[col for col in holdout_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
+    
     # assert no overlap
     assert len(set(dev_select_pred_df.index).intersection(set(ival_select_pred_df.index))) == 0, f"{set(dev_select_pred_df.index).intersection(set(ival_select_pred_df.index))} overlap between dev and ival"
     assert len(set(dev_select_pred_df.index).intersection(set(holdout_select_pred_df.index))) == 0, f"{set(dev_select_pred_df.index).intersection(set(holdout_select_pred_df.index))} overlap between dev and holdout"
     assert len(set(ival_select_pred_df.index).intersection(set(holdout_select_pred_df.index))) == 0, f"{set(ival_select_pred_df.index).intersection(set(holdout_select_pred_df.index))} overlap between ival and holdout"
     assert all([all(ival_select_pred_df.columns == dev_select_pred_df.columns), all(ival_select_pred_df.columns == holdout_select_pred_df.columns)]), "Columns do not match"
-    return dev_select_pred_df, ival_select_pred_df, holdout_select_pred_df, selected_cols, col_dict
+    
+    return dev_select_pred_df, ival_select_pred_df, holdout_select_pred_df, model_midps
 
 def validation_mcnemar_midp(pred_df, best_model_idx, verbose=False):
-
+    """
+    Given a dataframe of predictions, calculate the likelihood that each model is the same as the best model
+    Inputs:
+        pred_df: dataframe with the predictions (rows are subjects, columns are model predictions e.g. model1_0, model1_1, model2_0, model2_1)
+        best_model_idx: index of the best model in the dataframe 
+    Outputs:
+        midp_vals: dictionary with the likelihood that each model is the same as the best model {model0_0: 0.05, model0_1: 0.1, ...}
+    """
     y_test = fu.get_y_from_df(pred_df)
     best_preds = pred_df.iloc[:, best_model_idx]
     tn1, fp1, fn1, tp1 = sklearn.metrics.confusion_matrix(y_test, best_preds).ravel()
-    midp_vals = []
+    midp_vals = {}
     for col in pred_df.columns:
         if col == pred_df.columns[best_model_idx]:
             midp_vals.append(1)
@@ -178,32 +296,11 @@ def validation_mcnemar_midp(pred_df, best_model_idx, verbose=False):
         midp = mu.mcnemar_midp(n12, n21)
         if verbose:
             print(f"Likelihood that the expected predictions of the two models are the same: {midp}")
-        midp_vals.append(midp)
+        midp_vals[col] = midp
     return midp_vals
 
-def load_model_data(results_df, which_results='new_split_csd', internal_folder='data/internal/', tables_folder='data/tables/'):
-    """
-    Go through a dataframe and load the development and unseen predictions into a dataframe   
-    For this, we must 
-    """
-    loaded_model_data = []
-    for idx, (i, row) in enumerate(results_df.iterrows()):
-        print(f"Loading model {idx+1}/{results_df.shape[0]}")
-        st = time.time()
-        json_filename = row['filename']
-        dset = row['dataset']
-        model, Xtr, Xts = ms.load_model_data(json_filename)
-        Xunseen = load_unseen_data(json_filename, dset, Xtr.index, base_folder=tables_folder, internal_folder=internal_folder, which_results=which_results)
-        assert len(set(Xtr.index).intersection(set(Xts.index))) == 0, f"Overlap between train and test: {set(Xtr.index).intersection(set(Xts.index))}"
-        assert len(set(Xtr.index).intersection(set(Xunseen.index))) == 0, f"Overlap between train and unseen: {set(Xtr.index).intersection(set(Xunseen.index))}"
-        loaded_model_data.append((model, Xtr, Xunseen))
-        print(f"Loading model {idx+1}/{results_df.shape[0]} took {time.time()-st} seconds")
-    
-    assert all([all(loaded_model_data[0][1].index == loaded_model_data[i][1].index) for i in range(1, len(loaded_model_data))])
-    assert all([all(loaded_model_data[0][2].index == loaded_model_data[i][2].index) for i in range(1, len(loaded_model_data))])
 
-    return loaded_model_data
-
+### Data splitting and model development
 def return_basemodel_preds(basemodel_results):
     """
     Given a dictionary of basemodel results, load the predictions for each basemodel
@@ -268,6 +365,91 @@ def return_basemodel_preds(basemodel_results):
     assert len(dev_pred_df.index) == len(set(dev_pred_df.index)), "Duplicate indices in dev test"
     return dev_pred_df, unseen_pred_df, loaded_model_data, feature_data
 
+def split_unseen_preds(unseen_preds, internal_folder='data/internal/', default=True, random_seed=0):
+    """
+    Given a dataframe unseen_preds with subjects as the index, split the predictions into internal validation and holdout
+    using the default splits in internal_folder or a random split
+    Inputs:
+        - unseen_preds: dataframe with the predictions
+        - internal_folder: folder with the internal splits
+        - default: whether to use the default splits or a random split
+    Outputs:
+        - ival_preds: dataframe with the internal validation predictions
+        - holdout_preds: dataframe with the holdout predictions
+    """
+    splits = ld.load_splits(internal_folder=internal_folder)
+    ival_subjs = splits['ival']
+    holdout_subjs = splits['holdout']
+    assert all([int(subj) in ival_subjs or subj in holdout_subjs for subj in unseen_preds.index]), "Some subjects not in splits"
+
+    if default:
+        ival_preds = unseen_preds.loc[[s for s in unseen_preds.index if int(s) in ival_subjs]]
+        holdout_preds = unseen_preds.loc[[s for s in unseen_preds.index if int(s) in holdout_subjs]]
+    else:
+        rng = np.random.RandomState(random_seed)
+        rand_ival_subjs = rng.choice(unseen_preds.index, int(len(unseen_preds.index)*0.8), replace=False)
+        rand_holdout_subjs = np.array([s for s in unseen_preds.index if s not in rand_ival_subjs])
+        ival_preds = unseen_preds.loc[[s for s in unseen_preds.index if s in rand_ival_subjs]]
+        holdout_preds = unseen_preds.loc[[s for s in unseen_preds.index if s in rand_holdout_subjs]]
+    return ival_preds, holdout_preds
+
+
+def return_split_results(default_savepaths, n_splits=10, n_train_cv=5):
+    """
+    Given a dictionary that contains the paths to:
+        - dev_basepreds: path to the development set predictions 
+        - unseen_basepreds: path to the unseen set predictions
+    
+    Return n_splits perturbations of the development and unseen set predictions
+
+    Inputs:
+        - default_savepaths: dictionary with the paths to the base predictions
+        - n_splits: number of splits to do
+        - n_train_cv: number of splits to do for the train cv
+    
+    Returns:
+        - split_results: dictionary with the split results
+            {'split_k':
+                {'select_cols': selected_columns,
+                'ival_groups': ival_groups,
+                'holdout_groups': holdout_groups,
+                'cv_scores': cv_scores,
+                'holdout_preds': holdout_preds,
+                'holdout_labels': holdout_labels,
+                }
+                }
+    """
+    assert 'dev_basepreds' in default_savepaths.keys(), "Must provide path to the development set predictions"
+    assert 'unseen_basepreds' in default_savepaths.keys(), "Must provide path to the unseen set predictions"
+    dev_basepreds = pd.read_csv(default_savepaths['dev_basepreds'], index_col=0)
+    unseen_basepreds = pd.read_csv(default_savepaths['unseen_basepreds'], index_col=0)
+    unseen_labels = fu.get_y_from_df(unseen_basepreds)
+    unseen_groups = unseen_basepreds.index.values
+    split_results = {}
+    holdout_cv = sklearn.model_selection.StratifiedShuffleSplit(n_splits=n_splits, test_size=0.5, random_state=42)
+    for split_idx, (train_idx, test_idx) in enumerate(holdout_cv.split(unseen_basepreds, unseen_labels)):
+        print(f"Running split {split_idx+1}/{n_splits}")
+        ival_groups = unseen_groups[train_idx]
+        holdout_groups = unseen_groups[test_idx]
+        
+        ival_preds = unseen_basepreds.loc[ival_groups]
+        holdout_preds = unseen_basepreds.loc[holdout_groups]
+        ival_labels = fu.get_y_from_df(ival_preds)
+        holdout_labels = fu.get_y_from_df(holdout_preds)
+        cv_scores = return_cv_train_test_preds(dev_basepreds, n_cv=n_train_cv)
+        split_results[f'split_{split_idx}'] = {
+            'select_cols': dev_basepreds.columns,
+            'ival_groups': ival_groups,
+            'holdout_groups': holdout_groups,
+            'cv_scores': cv_scores,
+            'holdout_preds': holdout_preds,
+            'holdout_labels': holdout_labels,
+            'ival_preds': ival_preds,
+            'ival_labels': ival_labels
+        }
+
+
+### Model development
 def return_dev_res_preds_ival_basetrain(results_df, ival_groups, loaded_model_data, which_results='new_split_csd', internal_folder='data/internal/', tables_folder='data/tables/', n_train_cv=5):
     """
     Go through a dataframe and load the combined development and ival predictions into a dataframe
@@ -636,66 +818,6 @@ def get_avg_model_best_estimators(loaded_model_data, clf_names=None):
 
     return out_dict
 
-def store_cv_results(base_model_results, cv_ensemble_split_dict, metalearners=['rf', 'lr', 'xgb'], n_cv=None, scores = ['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity']):
-    """
-    Grabs the mean and std of my cv ensemble and the base model cv
-    """
-    logo = False if f'test_scores_{metalearners[0]}_{scores[0]}' in cv_ensemble_split_dict['cv_results']['split0'].keys() else True
-    base_split_df = pd.DataFrame(base_model_results['model_splits'])
-    test_scores = {key: {score: [] for score in scores} for key in metalearners}
-    if logo:
-        for metalearner in metalearners:
-            meta_pred_probas = cv_ensemble_split_dict['cv_results']['meta_pred_probas'][metalearner]
-            meta_bin_pred = np.argmax(meta_pred_probas, axis=1)
-            meta_y = cv_ensemble_split_dict['cv_results']['meta_y']
-            meta_groups = cv_ensemble_split_dict['cv_results']['meta_groups']
-            # arbitrarily chunk the results into5  splits
-            cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            for sdx, (train_idx, test_idx) in enumerate(cv.split(meta_pred_probas, meta_y)):
-                test_pred_probas = meta_pred_probas[test_idx]
-                meta_bin_pred = np.argmax(test_pred_probas, axis=1)
-                test_y = meta_y[test_idx]
-                for score in scores:
-                    if score == 'specificity':
-                        metric_score = sklearn.metrics.recall_score(test_y, meta_bin_pred, pos_label=0)
-                    elif score == 'sensitivity':
-                        metric_score = sklearn.metrics.recall_score(test_y, meta_bin_pred, pos_label=1)
-                    elif score == 'balanced_accuracy':
-                        metric_score = sklearn.metrics.balanced_accuracy_score(test_y, meta_bin_pred)
-                    elif score == 'roc_auc':
-                        metric_score = sklearn.metrics.roc_auc_score(test_y, test_pred_probas[:,1])
-                    elif score == 'matthews_corrcoef':
-                        metric_score = sklearn.metrics.matthews_corrcoef(test_y, meta_bin_pred)
-                    else:
-                        raise ValueError(f"Score {score} not implemented")
-                    test_scores[metalearner][score].append(metric_score)
-                    time.sleep(0)
-                    
-    else:
-        for split in cv_ensemble_split_dict['cv_results'].keys():
-            for metalearner in metalearners:
-                if 'split' in split:
-                    for score in scores:
-                        test_scores[metalearner][score].append(cv_ensemble_split_dict['cv_results'][split][f'test_scores_{metalearner}_{score}'])
-
-    out_dict = {
-        'model_splits': base_model_results['model_splits'],
-        'model_best_scores': base_model_results['best_scores'],
-        'model_best_stds': base_model_results['best_stds'],
-        'model_names': base_model_results['clf_names'],
-        'model_mean_best_score': base_model_results['avg_best_score'],
-        'model_pooled_std': base_model_results['pooled_std'],
-        'metalearner_test_scores': test_scores
-    }
-    metamapper = {'rf': 'Random Forest', 'lr': 'Logistic Regression', 'xgb': 'XGBoost'}
-    print(f"Metalearner mean best scores: {[(metamapper[metalearner], np.mean(test_scores[metalearner]['matthews_corrcoef'])) for metalearner in metalearners]}")
-    mean_std_df = pd.DataFrame({
-        'mean_mcc': [np.mean(test_scores[metalearner]['matthews_corrcoef']) for metalearner in metalearners] + [base_model_results['avg_best_score']] + base_split_df.mean(axis=0).tolist(),
-        'std': [np.std(test_scores[metalearner]['matthews_corrcoef']) for metalearner in metalearners] + [base_model_results['pooled_std']] + base_split_df.std(axis=0).tolist()
-    }, index=[f"{metamapper[metalearner]} Metalearner" for metalearner in metalearners]  + [f"Average of selected models"] + base_split_df.columns.tolist())
-    
-    return out_dict, mean_std_df
-
 def plot_results(results, cv_ensemble_split_dict=None, include_average=True, fontsize=20, figsize=(10, 4), title="Training Set CV Scores for Each Classifier"):
     # Create a DataFrame for easier plotting
     df_splits = pd.DataFrame(results['model_splits'])
@@ -815,32 +937,51 @@ def plot_results(results, cv_ensemble_split_dict=None, include_average=True, fon
         
     return mean_std_df
 
-def train_ensemble_on_preds(train_pred_df, cv:int=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=5):
+def train_metamodel_on_preds(basepred_df: pd.DataFrame, cv:int=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=5):
+    """
+    Trains the hypertuned metalearners on the predictions of the base models
+    Inputs:
+        - basepred_df: DataFrame containing the predictions of the base models
+        - cv: number of splits for the cross-validation
+        - metalearners: list of metalearners to use (default: ['rf', 'lr', 'xgb'])
+        - n_jobs: number of jobs to use for the grid search (default: 5)
+    Outputs:
+        - fitted_models: dictionary containing the fitted metalearners, 
+            e.g. {'metalearner_rf': fitted_rf, 'metalearner_lr': fitted_lr, 'metalearner_xgb': fitted_xgb}
+        - metamodel_fitscores: dictionary containing the best scores for each metalearner,
+             e.g. {'best_scores_rf': mcc_score_list, 'best_scores_lr': mcc_score_list, 'best_scores_xgb': mcc_score_list}
+    """
+    assert type(cv) == int, "cv must be an integer"
+    assert cv > 1, "cv must be greater than 1"
+    assert type(basepred_df) == pd.DataFrame, "pred_df must be a DataFrame"
+
+
     if cv is None:
         cv = sklearn.model_selection.LeaveOneOut()
-        n_cv = cv.get_n_splits(train_pred_df, fu.get_y_from_df(train_pred_df))
+        n_cv = cv.get_n_splits(basepred_df, fu.get_y_from_df(basepred_df))
     else:
         n_cv = cv
-    fitted_mdl_dict = {}
-    out_dict = {}
+
+    fitted_models = {}
+    metamodel_fitscores = {}
     for metalearner in metalearners:
         if metalearner == 'rf':
             rf = sklearn.ensemble.RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=1)
             rf_grid = {'max_depth': [2, 3, 5, 7, 11, None], 'min_samples_leaf':[1,2,4,8], 'max_leaf_nodes': [2, 3, 5, 11, 13, 17, 24, 32, 64, None]}
             metalearner_rf  = sklearn.model_selection.GridSearchCV(rf, rf_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=cv)
-            metalearner_rf.fit(train_pred_df, fu.get_y_from_df(train_pred_df))
+            metalearner_rf.fit(basepred_df, fu.get_y_from_df(basepred_df))
             best_scores_rf = [metalearner_rf.cv_results_[f'split{k}_test_score'][metalearner_rf.best_index_] for k in range(n_cv)]
-            out_dict[f'best_scores_{metalearner}'] = best_scores_rf
-            fitted_mdl_dict[f'metalearner_{metalearner}'] = metalearner_rf
+            metamodel_fitscores[f'best_scores_{metalearner}'] = best_scores_rf
+            fitted_models[f'metalearner_{metalearner}'] = metalearner_rf
         elif metalearner == 'lr':
             lr = sklearn.linear_model.LogisticRegression(random_state=42, solver='saga', penalty='elasticnet', l1_ratio=0.5, max_iter=1000, n_jobs=1)
             lr_grid = {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000],
                         'l1_ratio': [0, 0.25, 0.5, 0.75, 1]}
             metalearner_lr  = sklearn.model_selection.GridSearchCV(lr, lr_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=cv)
-            metalearner_lr.fit(train_pred_df, fu.get_y_from_df(train_pred_df))
+            metalearner_lr.fit(basepred_df, fu.get_y_from_df(basepred_df))
             best_scores_lr = [metalearner_lr.cv_results_[f'split{k}_test_score'][metalearner_lr.best_index_] for k in range(n_cv)]
-            out_dict[f'best_scores_{metalearner}'] = best_scores_lr
-            fitted_mdl_dict[f'metalearner_{metalearner}'] = metalearner_lr
+            metamodel_fitscores[f'best_scores_{metalearner}'] = best_scores_lr
+            fitted_models[f'metalearner_{metalearner}'] = metalearner_lr
         elif metalearner == 'xgb':
             xgb = xgboost.XGBClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=1)
             xgb_grid = {
@@ -852,16 +993,35 @@ def train_ensemble_on_preds(train_pred_df, cv:int=5, metalearners=['rf', 'lr', '
                 'subsample': [0.7, 0.8, 0.9]
             }
             metalearner_xgb = sklearn.model_selection.GridSearchCV(xgb, xgb_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=cv)
-            metalearner_xgb.fit(train_pred_df, fu.get_y_from_df(train_pred_df))
+            metalearner_xgb.fit(basepred_df, fu.get_y_from_df(basepred_df))
             best_scores_xgb = [metalearner_xgb.cv_results_[f'split{k}_test_score'][metalearner_xgb.best_index_] for k in range(n_cv)]
-            out_dict[f'best_scores_{metalearner}'] = best_scores_xgb
-            fitted_mdl_dict[f'metalearner_{metalearner}'] = metalearner_xgb
-    return fitted_mdl_dict, out_dict
+            metamodel_fitscores[f'best_scores_{metalearner}'] = best_scores_xgb
+            fitted_models[f'metalearner_{metalearner}'] = metalearner_xgb
+        else:
+            raise ValueError(f"Metalearner {metalearner} not implemented")
+    return fitted_models, metamodel_fitscores
 
-def test_model_on_unseen_data(metalearner_dict, test_pred_df, metalearners=['rf', 'lr', 'xgb']): 
+def test_models_on_unseen_data(metalearner_dict, test_pred_df, metalearners=['rf', 'lr', 'xgb']): 
     """
     Given a dictionary that contains the fitted metalearners, test the metalearners on unseen data
+    Inputs:
+        - metalearner_dict: dictionary containing the fitted metalearners,
+            e.g. {'metalearner_rf': fitted_rf, 'metalearner_lr': fitted_lr, 'metalearner_xgb': fitted_xgb}
+        - test_pred_df: DataFrame containing the predictions of the base models
+        - metalearners: list of metalearners to use (default: ['rf', 'lr', 'xgb'])
+    Outputs:
+        - unseen_score_pred_dict: dictionary containing the scores and predictions of the metalearners on the unseen data
+            e.g. {'rf': {'scores': {'MCC': mcc, 'ROC AUC': roc_auc, 'Balanced Accuracy': balanced_accuracy, 'Sensitivity': sensitivity, 'Specificity': specificity},
+        - score_df: DataFrame containing the scores of the metalearners on the unseen data
+            - rows: ['MCC', 'ROC AUC', 'Balanced Accuracy', 'Sensitivity', 'Specificity']
+            - columns: metalearners
     """
+    assert type(metalearner_dict) == dict, "metalearner_dict must be a dictionary"
+    assert type(test_pred_df) == pd.DataFrame, "test_pred_df must be a DataFrame"
+    assert all([f'metalearner_{metalearner}' in metalearner_dict.keys() for metalearner in metalearners]), "metalearner_dict must contain all metalearners"
+    assert all([sklearn.utils.validation.check_is_fitted(metalearner_dict[f'metalearner_{metalearner}']) for metalearner in metalearners]), "metalearners must be fitted"
+    
+    
     unseen_score_pred_dict = {}
     for metalearner in metalearners:
         fitted_mdl = metalearner_dict[f'metalearner_{metalearner}']
@@ -888,11 +1048,11 @@ def test_model_on_unseen_data(metalearner_dict, test_pred_df, metalearners=['rf'
                                             'roc_curve': {'fpr': fpr, 'tpr': tpr, 'thresh': thresh},
                                             'preds': metalearner_pred,
                                             'pred_probs': metalearner_pred_proba}   
+        
     score_names = ['MCC', 'ROC AUC', 'Balanced Accuracy', 'Sensitivity', 'Specificity']
     score_df = pd.DataFrame({metalearner: [unseen_score_pred_dict[metalearner]['scores'][score] for score in score_names] for metalearner in metalearners}, index=score_names)
 
     return unseen_score_pred_dict, score_df
-
 
 def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/mTBI/mTBI_Classification/cv_results/final_results_csd/', \
                             results_table_path='data/tables/', internal_folder='data/internal/', which_dataset='late_eeg_ecg', to_select_base_models=False, ival_metatrain=False, ival_basetrain=False, ival_basetrain_cv=10, \
@@ -998,7 +1158,7 @@ def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/m
     if not ival_metatrain and not ival_basetrain:
         metamodel_paths = [os.path.join(new_savepath, f"metalearner_{metalearner}_{which_results}_{which_dataset}.joblib") for metalearner in metalearners]
         if not os.path.exists(os.path.join(new_savepath, f"meta_out_dict_{which_results}_{which_dataset}.json")) or reload_results or not all([os.path.exists(path) for path in metamodel_paths]):
-            fitted_metamodels, meta_out_dict = train_ensemble_on_preds(late_fused_dev_pred_df, cv=n_train_cv, n_jobs=n_jobs)
+            fitted_metamodels, meta_out_dict = train_metamodel_on_preds(late_fused_dev_pred_df, cv=n_train_cv, n_jobs=n_jobs)
             for metalearner, fitted_mdl in fitted_metamodels.items():
                 joblib.dump(fitted_mdl, os.path.join(late_fset_savepath, f"metalearner_{metalearner}_{which_results}_{which_dataset}.joblib"))
             with open(os.path.join(new_savepath, f"meta_out_dict_{which_results}_{which_dataset}.json"), 'w') as f:
@@ -1055,7 +1215,7 @@ def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/m
                 late_fused_ival_pred_df = late_fused_ival_pred_df[late_fused_holdout_pred_df.columns]
                 late_fused_dev_pred_df = late_fused_dev_pred_df[late_fused_holdout_pred_df.columns]
                 assert all(late_fused_dev_ival_pred_df.columns == late_fused_holdout_pred_df.columns)
-            fitted_metamodels, meta_out_dict = train_ensemble_on_preds(late_fused_dev_ival_pred_df, cv=n_train_cv)
+            fitted_metamodels, meta_out_dict = train_metamodel_on_preds(late_fused_dev_ival_pred_df, cv=n_train_cv)
             # ival_cv_ensemble_split_dict = get_ensemble_cv_res_preds(dev_ival_pred_df, scores=['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity'], metalearners=metalearners, n_cv=ival_eval_cv)
         elif ival_basetrain:
             print(f"Fitting metamodels on dev+ival cv predictions")
@@ -1093,7 +1253,7 @@ def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/m
             assert len(set(late_fused_dev_ival_pred_df.index).intersection(set(new_late_fused_holdout_pred_df.index))) == 0
             
 
-            fitted_metamodels, meta_out_dict = train_ensemble_on_preds(late_fused_dev_ival_pred_df, cv=n_train_cv)
+            fitted_metamodels, meta_out_dict = train_metamodel_on_preds(late_fused_dev_ival_pred_df, cv=n_train_cv)
             # ival_cv_ensemble_split_dict = get_ensemble_cv_res_preds(dev_ival_test_pred_df, scores=['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity'], metalearners=metalearners, n_cv=ival_eval_cv)
         else:
             # ival_cv_ensemble_split_dict = get_ensemble_cv_res_preds(unseen_ival_pred_df, scores=['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity'], metalearners=metalearners, n_cv=ival_eval_cv)
@@ -1115,7 +1275,7 @@ def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/m
                 # 'midp_col_dict': col_dict,
             }
         
-        split_test_score_pred_dict, split_test_score_df = test_model_on_unseen_data(fitted_metamodels, late_fused_ival_pred_df, metalearners=metalearners)
+        split_test_score_pred_dict, split_test_score_df = test_models_on_unseen_data(fitted_metamodels, late_fused_ival_pred_df, metalearners=metalearners)
         split_test_score_df.to_csv(os.path.join(split_savepath, f"split{splitdx}_test_score_df_{which_results}_{which_dataset}.csv"))
         split_test_score_dfs.append(split_test_score_df)
         split_results['test_results'] = split_test_score_pred_dict
@@ -1125,8 +1285,8 @@ def run_late_ensemble_resmodel(which_results='csd_fecg', savepath='/shared/roy/m
             
 
 
-        split_holdout_score_pred_dict, split_holdout_score_df = test_model_on_unseen_data(fitted_metamodels, late_fused_holdout_pred_df, metalearners=metalearners)
-        split_unseen_score_pred_dict, split_unseen_score_df = test_model_on_unseen_data(fitted_metamodels, pd.concat([late_fused_ival_pred_df, late_fused_holdout_pred_df], axis=0), metalearners=metalearners)
+        split_holdout_score_pred_dict, split_holdout_score_df = test_models_on_unseen_data(fitted_metamodels, late_fused_holdout_pred_df, metalearners=metalearners)
+        split_unseen_score_pred_dict, split_unseen_score_df = test_models_on_unseen_data(fitted_metamodels, pd.concat([late_fused_ival_pred_df, late_fused_holdout_pred_df], axis=0), metalearners=metalearners)
 
         split_results['holdout_results'] = split_holdout_score_pred_dict
         split_results['unseen_results'] = split_unseen_score_pred_dict
@@ -1277,29 +1437,27 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         ### get the train and test predictions
         print(f"Getting train and test predictions")
         dev_pred_df, unseen_pred_df, loaded_model_data, feature_data= return_basemodel_preds(basemodel_results)
-        ival_pred_df, holdout_pred_df = split_unseen_preds(unseen_pred_df)
+        ival_pred_df, holdout_pred_df = split_unseen_preds(unseen_pred_df, internal_folder=internal_folder, default=True)
 
         ### Select the best models
         print(f"Selecting the best models")
         select_dev_pred_df, select_ival_pred_df, _, _ = select_base_models(dev_pred_df, ival_pred_df)
-        dev_ival_pred_df = pd.concat([dev_pred_df, ival_pred_df], axis=0)
+        select_dev_ival_pred_df = pd.concat([select_dev_pred_df, select_ival_pred_df], axis=0)
         
 
         ### Train the metamodels using the dev and ival predictions
         print(f"Fitting metamodels on dev predictions")
-        fitted_metamodels, meta_out_dict = train_ensemble_on_preds(dev_ival_pred_df, cv=n_train_cv)
+        fitted_metamodels, metamodel_fitscores = train_metamodel_on_preds(select_dev_ival_pred_df, cv=n_train_cv)
 
         ### Test the metamodels on the holdout data
         print(f"Testing metamodels on unseen data")
-        default_split_results = test_model_on_unseen_data(fitted_metamodels, holdout_pred_df, metalearners=metalearners)
-
+        default_split_results, default_results_table = test_models_on_unseen_data(fitted_metamodels, holdout_pred_df, metalearners=metalearners)
 
         ### Save the results
-        default_results_saved = save_split_results(default_split_results, default_savepath)
+        default_results_saved = save_split_results(default_split_results, default_results_table, fitted_metamodels, default_savepath, optional_savables={'metamodel_fitscores': metamodel_fitscores, 'dev_basepreds': dev_pred_df, 'unseen_basepreds': unseen_pred_df})
 
         ### Repeat the process for n_splits
-        n_split_results = return_split_results(dev_pred_df, unseen_pred_df, loaded_model_data, n_splits, n_train_cv, metalearners)
-
+        n_split_results = return_split_results(default_results_saved, n_splits, n_train_cv)
 
         ### Save the results
         split_results_saved = save_split_results(n_split_results, split_savepath)

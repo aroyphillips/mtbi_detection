@@ -485,10 +485,10 @@ def load_splits(internal_folder='data/internal/'):
     holdout_subjs = np.load(os.path.join(internal_folder, 'holdout_subjs.npy'))
     dev_subjs = np.load(os.path.join(internal_folder, 'dev_subjs.npy'))
     skip_subjs = [7,9, 33, 47, 54]
-    train_subjs = [subj for subj in train_subjs if int(subj) not in skip_subjs]
-    ival_subjs = [subj for subj in ival_subjs if int(subj) not in skip_subjs]
-    holdout_subjs = [subj for subj in holdout_subjs if int(subj) not in skip_subjs]
-    dev_subjs = [subj for subj in dev_subjs if int(subj) not in skip_subjs]
+    train_subjs = [int(subj) for subj in train_subjs if int(subj) not in skip_subjs]
+    ival_subjs = [int(subj) for subj in ival_subjs if int(subj) not in skip_subjs]
+    holdout_subjs = [int(subj) for subj in holdout_subjs if int(subj) not in skip_subjs]
+    dev_subjs = [int(subj) for subj in dev_subjs if int(subj) not in skip_subjs]
     splits = {'train': train_subjs, 'ival': ival_subjs, 'holdout': holdout_subjs, 'dev': dev_subjs, 'skip': skip_subjs}
     assert len(train_subjs) + len(ival_subjs) + len(holdout_subjs) == len(dev_subjs) + len(holdout_subjs)
     assert np.sum(get_labels_from_subjects(train_subjs)) + np.sum(get_labels_from_subjects(ival_subjs)) + np.sum(get_labels_from_subjects(holdout_subjs)) == np.sum(get_labels_from_subjects(dev_subjs)) + np.sum(get_labels_from_subjects(holdout_subjs))
