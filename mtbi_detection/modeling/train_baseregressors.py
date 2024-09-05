@@ -1,3 +1,5 @@
+## Code to predict the symptoms of mTBI using EEG, ECG, and symptoms data
+
 import math
 import argparse
 import time
@@ -21,14 +23,13 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.utils.validation import check_is_fitted
 # import a bunch of models
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import RFECV
-from xgboost import XGBClassifier
-from sklearn.linear_model import LogisticRegression
+from xgboost import XGBRegressor
+from sklearn.linear_model import ElasticNet
 from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import make_scorer
 
 
 import mtbi_detection.features.compute_all_features as caf
@@ -52,14 +53,14 @@ RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-
 
 # set the random seed
 np.random.seed(88)
-def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
+def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recursive', n_jobs=10, n_hyper_cv=5, n_fs_cv=3, step=5, 
          search_method='bayes', n_points=1, n_iterations=100, results_savepath=RESULTS_SAVEPATH, choose_subjs='train', featurepath=FEATUREPATH,
          verbosity=10,  n_fs_repeats=2, n_hyper_repeats=2, internal_folder='data/internal', skip_ui=False, **kwargs):
     """
-    Trains the baselearner specified by model_name on the features specified by which_features
+    Trains the base regressors specified by model_name on the features specified by which_features
  
     Inputs
-        - model_name (str): The name of the model to train. Default is 'GaussianNB'.
+        - model_name (str): The name of the model to train. Default is 'ElasticNet
         - which_features (list): List of features to use for training. Default is ['ecg'].
         - wrapper_method (str): The feature selection method to use. Default is 'recursive'.
         - n_jobs (int): Number of parallel jobs to run. Default is 10.
@@ -82,12 +83,12 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     """
     assert wrapper_method in ['none', 'recursive', 'nofsatall'], f"Wrapper method {wrapper_method} not recognized, must be 'none', 'recursive', or 'nofsatall'"
     assert search_method in ['grid', 'random', 'bayes'], f"Search method {search_method} not recognized, must be 'grid', 'random', or 'bayes'"
-    assert model_name in ['GaussianNB', 'LogisticRegression', 'AdaBoost', 'KNeighborsClassifier', 'RandomForestClassifier', 'XGBClassifier', 'all'], f"Model name {model_name} not recognized"
-    
+    assert model_name in ['RandomForestRegressor', 'KNeighborsRegressor', 'ElasticNet', 'XGBRegressor', 'all'], f"Model name {model_name} not recognized, must be 'RandomForestRegressor', 'KNeighborsRegressor', 'ElasticNet', 'XGBRegressor', or 'all'"
+  
     print(f"Training a {model_name} model with features {which_features} using {wrapper_method} feature selection and {search_method} search method")
     print(f"Skipping user input? {skip_ui}")
     # save the best model
-    results_savepath = os.path.join(results_savepath, 'baselearners')
+    results_savepath = os.path.join(results_savepath, 'baseregressors')
     if not skip_ui:
         du.clean_params_path(results_savepath, skip_ui=skip_ui)
     caf_params = caf.extract_all_params(choose_subjs=choose_subjs, skip_ui=skip_ui, **kwargs)
@@ -101,7 +102,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         totaltime = time.time()
         
         # mattews correlation coefficient
-        scoring = sklearn.metrics.make_scorer(sklearn.metrics.matthews_corrcoef)
+        scoring = make_scorer(fu.avg_rank_rmse, greater_is_better=False)
 
         fs_cv = sklearn.model_selection.RepeatedKFold(n_splits=n_fs_cv, n_repeats=n_fs_repeats, random_state=88)
         hyper_cv = sklearn.model_selection.RepeatedKFold(n_splits=n_hyper_cv, n_repeats=n_hyper_repeats, random_state=88) 
@@ -131,15 +132,21 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         ## Double check that there is no data leakage between dataset splits
         X_train = all_feature_df.copy(deep=True)
         X_train = X_train.replace([np.inf, -np.inf], np.nan)
-        y_train = fu.get_y_from_df(X_train)
+        y_train_df = fu.get_reg_from_df(X_train)
+        y_train = y_train_df.values
+        y_train_means = y_train_df.mean(axis=0)
+        y_train_stds = y_train_df.std(axis=0)
+        assert len(y_train_means) == y.shape[1], "y_train_means does not match y"
+        assert len(y_train_stds) == y.shape[1], "y_train_stds does not match y"
+
         assert(len(fu.print_infs(X_train)[0])==0)
         groups_train = X_train.index.values.astype(int)
 
 
         X_ival, _ = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='ival', internal_folder=internal_folder, skip_ui=skip_ui, **kwargs)
         X_holdout,_ = load_all_features(which_features, featurepath=featurepath, n_jobs=n_jobs, verbosity=verbosity, choose_subjs='holdout', internal_folder=internal_folder, skip_ui=skip_ui, **kwargs)
-        y_ival = fu.get_y_from_df(X_ival)
-        y_holdout = fu.get_y_from_df(X_holdout)
+        y_ival = fu.get_reg_from_df(X_ival).values
+        y_holdout = fu.get_reg_from_df(X_holdout).values
         groups_ival = X_ival.index.values.astype(int)
         groups_holdout = X_holdout.index.values.astype(int)
 
@@ -175,67 +182,75 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
         param_grid['vart__threshold'] = [0.0, 0.01, 0.05, 0.1]
 
-        feature_filter = UnivariateThresholdSelector(sklearn.feature_selection.mutual_info_classif, threshold=0.05, discrete_features=False, min_features=100)
-        param_grid['filter__score_func'] = [sklearn.feature_selection.mutual_info_classif, pearson_corr, spearman_corr, kendall_corr, anova_pinv]
+        feature_filter = fu.UnivariateThresholdSelector(fu.avg_mi_reg, threshold=0.05, discrete_features=False, min_features=100)
+        param_grid['filter__score_func'] = [fu.avg_mi_reg, fu.avg_pearson_corr, fu.avg_spearman_corr, fu.avg_kendall_corr, fu.max_pearson_corr, fu.max_spearman_corr]
         param_grid['filter__threshold'] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9, 1.0]
 
         # narrow the threshold for EEG features due to computational complexity
         if 'eeg' in which_features:
             param_grid['filter__threshold'] = [0.5, 0.9, 0.95, 0.99, 0.999, 1.0]
             param_grid['filter__score_func'] = [pearson_corr, spearman_corr, kendall_corr, anova_pinv]
-
+        eval_scoring = {'avg_pearson': make_scorer(fu.avg_pearson_pred), 
+                        'avg_spearman': make_scorer(fu.avg_spearman_pred), 
+                        'avg_rmse': make_scorer(fu.avg_rmse), 
+                        'avg_mae': make_scorer(fu.avg_mae_pred, greater_is_better=False),
+                        'avg_medae': make_scorer(fu.avg_medae_pred, greater_is_better=False),
+                        'stacked_rmse': make_scorer(fu.stacked_rmse_pred, greater_is_better=False),
+                        'stacked_mae': make_scorer(fu.stacked_mae_pred, greater_is_better=False),
+                        'stacked_medae': make_scorer(fu.stacked_medae_pred, greater_is_better=False),
+                        'stacked_pearson': make_scorer(fu.stacked_pearson_pred),   
+                        'stacked_spearman': make_scorer(fu.stacked_spearman_pred),
+                        'max_pearson': make_scorer(fu.max_pearson_pred),
+                        'max_spearman': make_scorer(fu.max_spearman_pred),
+                        'max_rmse': make_scorer(fu.max_rmse_pred, greater_is_better=False),
+                        'max_mae': make_scorer(fu.max_mae_pred, greater_is_better=False),
+                        'max_medae': make_scorer(fu.max_medae_pred, greater_is_better=False),
+                        }  
         if wrapper_method == 'recursive':
             # rfecv_estimator = XGBClassifier(max_depth=2)
-            rfecv_estimator = RandomForestClassifier(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)
-            wrapper = RFECV(estimator=rfecv_estimator, step=step, cv=fs_cv, scoring=scoring, n_jobs=inner_jobs, min_features_to_select=32, verbose=0)
-            param_grid['wrapper__estimator'] = [RandomForestClassifier(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)]
+            rfecv_estimator = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)
+            wrapper = RFECV(estimator=rfecv_estimator, step=step, cv=fs_cv, scoring=scoring, n_jobs=inner_jobs, min_features_to_select=32, verbose=1)
+            param_grid['wrapper__estimator'] = [RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_split=4, max_features=32)]
             param_grid['wrapper__estimator__max_depth'] = [2, 4, 8]
             param_grid['wrapper__estimator__min_samples_leaf'] = [1, 2]
             param_grid['wrapper__estimator__max_features'] = ['sqrt', 'log2']
             param_grid['wrapper__step'] = [0.001, 0.01, 0.05, 0.1, 0.2]
-            param_grid['wrapper__scoring'] = ['roc_auc', 'neg_brier_score', 'balanced_accuracy', 'neg_log_loss', sklearn.metrics.make_scorer(sklearn.metrics.matthews_corrcoef)] #, sklearn.metrics.make_scorer(sklearn.metrics.matthews_corrcoef)]
+            param_grid['wrapper__scoring'] = [val for _, val in eval_scoring.items()]
         elif wrapper_method is None or wrapper_method.lower() == 'none' or wrapper_method.lower() == 'nofsatall':
             wrapper = 'passthrough'
         else:
             raise ValueError(f"Wrapper method {wrapper_method} not recognized")
         
-        classifier = GaussianNB()
+        regressor = KNeighborsRegressor()
 
-        
+            
         if model_name.lower() == 'all':
-            param_grid['classifier'] = [GaussianNB(), KNeighborsClassifier(), RandomForestClassifier(n_estimators=10000, min_samples_leaf=1, min_samples_split=4, n_jobs=model_jobs), LogisticRegression(penalty='l1', solver='saga', C=1, max_iter=1000)]
-        elif model_name == 'GaussianNB':
-            param_grid['classifier'] = [GaussianNB()]
-        elif model_name == 'LogisticRegression':
-            param_grid['classifier'] = [LogisticRegression(penalty='elasticnet', solver='saga', C=1, max_iter=1000, warm_start=True)]
-            param_grid['classifier__penalty'] = ['elasticnet']
-            param_grid['classifier__solver'] = ['saga']
-            param_grid['classifier__C'] = [0.001, 0.01, 0.1, 1, 10, 100, 1000]
-            param_grid['classifier__l1_ratio'] = [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
-        elif model_name == 'AdaBoost':
-            param_grid['classifier'] = [AdaBoostClassifier()]
-            param_grid['classifier__n_estimators'] = [100, 1000, 10000]
-            param_grid['classifier__learning_rate'] = [0.001, 0.01, 0.1, 1.0]
-        elif model_name == 'KNeighborsClassifier':
-            param_grid['classifier'] = [KNeighborsClassifier()]
-            param_grid['classifier__n_neighbors'] = [3, 5, 7]
-        elif model_name == 'RandomForestClassifier':
-            param_grid['classifier'] = [RandomForestClassifier(n_estimators=100, max_features=0.01, max_depth=None, max_samples=1.0, min_samples_leaf=1, min_samples_split=2, oob_score=True, n_jobs=model_jobs)]
-            param_grid['classifier__n_estimators'] = [100, 1000, 10000]
-            param_grid['classifier__max_features'] = ['log2', 'sqrt']
-            param_grid['classifier__max_depth'] = [1, 2, 4, 8, 16, None]
-            param_grid['classifier__min_samples_leaf'] = [1, 2, 4]
-        elif model_name == 'XGBClassifier':
-            param_grid['classifier'] = [XGBClassifier(n_jobs=model_jobs, verbosity=1)]
-            param_grid['classifier__n_estimators'] = [100, 1000, 10000]
-            param_grid['classifier__max_depth'] = [None, 2, 3, 4, 5, 7]
-            param_grid['classifier__min_child_weight'] = [1, 2]
-            param_grid['classifier__learning_rate'] = [0.001, 0.01, 0.05, 0.1, 0.2]
-            param_grid['classifier__subsample'] = [0.6, 0.8, 1.0]
-            param_grid['classifier__colsample_bytree'] = [0.6, 0.8, 1.0]
-            param_grid['classifier__gamma'] = [0, 0.1, 0.2]
-            param_grid['classifier__reg_alpha'] = [0.1, 1, 10, 100, 1000, 10000]
-            param_grid['classifier__reg_lambda'] = [0.1, 1, 10, 100, 1000, 10000]
+            param_grid['regressor'] = [KNeighborsRegressor(), RandomForestRegressor(n_estimators=10000, min_samples_leaf=1, min_samples_split=4, n_jobs=model_jobs), ElasticNet(), XGBRegressor(n_jobs=model_jobs)]
+        elif model_name == 'ElasticNet':
+            param_grid['regressor'] = [ElasticNet()] 
+            param_grid['regressor__alpha'] = [0, 0.01, 0.1, 1, 10, 100]
+            param_grid['regressor__l1_ratio'] = [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+        elif model_name == 'KNeighborsRegressor':
+            param_grid['regressor'] = [KNeighborsRegressor()]
+            param_grid['regressor__n_neighbors'] = [3, 5, 7]
+            param_grid['regressor__p'] = [1, 2, 3, 4]
+        elif model_name == 'RandomForestRegressor':
+            param_grid['regressor'] = [RandomForestRegressor(n_estimators=100, max_features=0.01, max_depth=None, max_samples=1.0, min_samples_leaf=1, min_samples_split=2, oob_score=False, n_jobs=model_jobs)]
+            param_grid['regressor__n_estimators'] = [100, 1000, 10000]
+            param_grid['regressor__max_features'] = ['log2', 'sqrt']
+            param_grid['regressor__max_depth'] = [1, 2, 4, 8, 16, None]
+            param_grid['regressor__min_samples_leaf'] = [1, 2, 4]
+        elif model_name == 'XGBRegressor':
+            param_grid['regressor'] = [XGBRegressor(n_jobs=model_jobs)]
+            param_grid['regressor__n_estimators'] = [100, 1000, 10000]
+            param_grid['regressor__max_depth'] = [None, 2, 3, 4, 5, 7]
+            param_grid['regressor__min_child_weight'] = [1, 2]
+            param_grid['regressor__learning_rate'] = [0.001, 0.01, 0.05, 0.1, 0.2]
+            param_grid['regressor__subsample'] = [0.6, 0.8, 1.0]
+            param_grid['regressor__colsample_bytree'] = [0.6, 0.8, 1.0]
+            param_grid['regressor__gamma'] = [0, 0.1, 0.2]
+            param_grid['regressor__reg_alpha'] = [0.1, 1, 10, 100, 1000, 10000]
+            param_grid['regressor__reg_lambda'] = [0.1, 1, 10, 100, 1000, 10000]
         else:
             raise ValueError(f"Model name {model_name} not implemented'")
 
@@ -250,7 +265,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
             param_grid['deco__feat_threshold']= [0.3, 0.5, 0.7, 1.0, 1.001]
             param_grid['deco__targ_threshold']= [-.001, 0, 0.1, 0.2, 0.3, 0.9, 0.95, 0.99, 0.999]
             param_grid['deco__num_features']= [5000] 
-            param_grid['deco__targ_method']= ['anova_pinv', 'mutual_information', 'kendall', 'spearman', 'pearson']
+            param_grid['deco__targ_method']=  ['avg_pearson', 'avg_spearman', 'avg_kendall', 'max_pearson', 'max_spearman', 'max_kendall']
             param_grid['deco__prune_method']= ['pearson', 'spearman']
             preprocpipe = Pipeline([('deduper', deduper), ('scaler', scalers[0]), ('median imputer', SimpleImputer(strategy='median')), ('post_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('vart', var_thresh),('filter', feature_filter), ('deco', decollinearizer)])
 
@@ -261,7 +276,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
             inner_col_transformer.append(('selectsym', preprocpipe, col_mapping['selectsym']))
         preproctransform = ColumnTransformer(inner_col_transformer)
 
-        pipe = Pipeline([('preproc', preproctransform), ('wrapper', wrapper), ('out_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('classifier', classifier)])
+        pipe = Pipeline([('preproc', preproctransform), ('wrapper', wrapper), ('out_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('regressor', regressor)])
         preprocsteps = list(preprocpipe.named_steps.keys())
         new_param_grid = {}
         for param_name, param_values in param_grid.items():
@@ -286,11 +301,11 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
             new_param_grid[f'{eeg_prefix}deco__feat_threshold']= [0.5, 0.7, 1.0, 1.001]
             new_param_grid[f'{eeg_prefix}deco__targ_threshold']= [-.001, 0, 0.1, 0.2, 0.3, 0.9, 0.95, 0.99, 0.999]
             new_param_grid[f'{eeg_prefix}deco__num_features']= [100, 1000, 5000, 10000]
-            new_param_grid[f'{eeg_prefix}deco__targ_method']= ['anova_pinv', 'kendall', 'spearman', 'pearson']
+            new_param_grid[f'{eeg_prefix}deco__targ_method']= ['avg_pearson', 'avg_spearman', 'avg_kendall', 'max_pearson', 'max_spearman', 'max_kendall']
             new_param_grid[f'{eeg_prefix}deco__prune_method']= ['pearson', 'spearman']
                     
             new_param_grid[f'{eeg_prefix}filter__threshold'] = [0.7, 0.9, 0.95, 0.99, 0.999, 1.0]
-            new_param_grid[f'{eeg_prefix}filter__score_func'] = [pearson_corr, spearman_corr, anova_pinv, sklearn.feature_selection.mutual_info_classif]
+            new_param_grid[f'{eeg_prefix}filter__score_func'] =  [fu.avg_pearson_corr, fu.avg_spearman_corr, fu.max_pearson_corr, fu.max_spearman_corr]
             new_param_grid[f'{eeg_prefix}filter__min_features'] = [100, 500, 1000]
             new_param_grid[f'{eeg_prefix}filter__scale_scores'] = [True]
             
@@ -320,7 +335,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
         print("Train dataframe shape", X_train.shape, "Original dataframe shape", all_feature_df.shape)
         print("Fitting search...")
-        search.fit(X_train, fu.get_y_from_df(X_train))
+        search.fit(X_train, y_train)
         print(f"{search_method}Search CV took: {time.time() - starttime}")
 
         # print the best hyperparameters and corresponding score
@@ -331,8 +346,9 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
         print("CV best score:", search.best_score_)
 
 
-        train_results = mu.score_binary_model(search, X_train, y_train)
-        ival_results = mu.score_binary_model(search, X_ival, y_ival)
+        train_results = mu.score_multireg_model(search, X_train, y_train, norm_means=y_train_means, norm_stds=y_train_stds)
+        ival_results = mu.score_multireg_model(search, X_ival, y_ival, norm_means=y_train_means, norm_stds=y_train_stds)
+
 
         print("___TRAIN RESULTS___")
         mu.print_binary_scores(train_results)
@@ -362,9 +378,6 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
                     if model.named_steps[named_step] is not None and model.named_steps[named_step] != 'passthrough':
                         preproc_X_train = model.named_steps[named_step].transform(preproc_X_train)
                     
-                # preproc_X_train = model.named_steps['deduper'].transform(X_train)
-                # preproc_X_train = model.named_steps['scaler'].transform(preproc_X_train)
-                # preproc_X_train = model.named_steps['filter'].transform(preproc_X_train)
                 k_score = model.named_steps['wrapper'].score(preproc_X_train, y_train)
                 sffs_subset = None
             except:
@@ -377,26 +390,17 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
         elif wrapper_method is None or wrapper_method.lower() == 'none' or wrapper_method.lower()=='nofsatall':
             try:
-                if model_name == 'RandomForestClassifier':
-                    k_feature_names = X_train.columns[[idx for idx in model.named_steps['classifier'].feature_importances_.argsort()[::-1]]]
-                    k_feature_names_attr = [idx for idx in model.named_steps['classifier'].feature_importances_]
-                    # print the oob score
-                    k_score = model.named_steps['classifier'].oob_score_
-                    print("OOB score:", k_score)
-                    print("Top 10 features:", k_feature_names[:10])
-                        
-                else:
-                    # get the pipeline up to the classifier
-                    preproc_X_train = X_train.copy(deep=True)
-                    for named_step in model.named_steps:
-                        if model.named_steps[named_step] is not None and model.named_steps[named_step] != 'passthrough' and named_step != 'classifier' and named_step != 'scaler':
-                            preproc_X_train = model.named_steps[named_step].transform(preproc_X_train)
 
-                    # identify the columns that are in preproc_X_train using the original X_train: https://stackoverflow.com/questions/45313301/find-column-name-in-pandas-that-matches-an-array
-                    k_feature_names = X_train.columns[(X_train.values ==  np.asarray(preproc_X_train))[:, np.newaxis].all(axis=0)]
-                            
-                    k_feature_names_attr = None
-                    k_score = None
+                preproc_X_train = X_train.copy(deep=True)
+                for named_step in model.named_steps:
+                    if model.named_steps[named_step] is not None and model.named_steps[named_step] != 'passthrough' and named_step != 'regressor' and named_step != 'scaler':
+                        preproc_X_train = model.named_steps[named_step].transform(preproc_X_train)
+
+                # identify the columns that are in preproc_X_train using the original X_train: https://stackoverflow.com/questions/45313301/find-column-name-in-pandas-that-matches-an-array
+                k_feature_names = X_train.columns[(X_train.values ==  np.asarray(preproc_X_train))[:, np.newaxis].all(axis=0)]
+                        
+                k_feature_names_attr = None
+                k_score = None
             except:
                 k_feature_names = X_train.columns.tolist()
                 k_feature_names_attr = None
@@ -669,10 +673,13 @@ if __name__ == '__main__':
     parser.add_argument('--n_iterations', type=int, default=100, help="The number of random iterations to use for the random search")
     parser.add_argument('--n_points', type=int, default=1, help="The number of points to use for the bayesian search")
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
-    parser.add_argument('--model_name', type=str, default='XGBClassifier', help="The ndame of the model to use")
+    parser.add_argument('--model_name', type=str, default='XGBRegressor', help="The ndame of the model to use")
     parser.add_argument('--outer_jobs', type=int, default=1, help="The number of jobs to use for the outer grid search")
     parser.add_argument('--inner_jobs', type=int, default=1, help="The number of jobs to use for the inner grid search")
     parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
+    parser.add_argument('--scoring', type=str, default='mcc', help="The scoring method to use for the grid search")
+
+
 
     ## data subset
     parser.add_argument('--which_features', nargs='+', type=str, default=['ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']

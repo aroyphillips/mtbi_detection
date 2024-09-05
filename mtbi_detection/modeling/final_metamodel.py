@@ -28,10 +28,10 @@ DATAPATH = open('extracted_path.txt', 'r').read().strip()
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
-
+BASELEARNERS_SAVEPATH = os.path.join(RESULTS_SAVEPATH, 'baselearners')
 
 ### LOADING AND SAVING
-def load_model_results(which_featuresets=['eeg', 'ecg'], savepath=RESULTS_SAVEPATH, late_fuse=True):
+def load_model_results(which_featuresets=['eeg', 'ecg'], savepath=BASELEARNERS_SAVEPATH, late_fuse=True):
     """
     Given a list of featuresets, load the model results for each featureset
     Inputs:
@@ -50,7 +50,7 @@ def load_model_results(which_featuresets=['eeg', 'ecg'], savepath=RESULTS_SAVEPA
         for fset in which_featuresets:
             basemodel_results[fset] = {}
             for base_model in base_model_names:
-                param_mapping = {'which_features': fset, 'model_name': base_model}
+                param_mapping = {'which_features': [fset], 'model_name': base_model}
                 basemodel_results[fset][base_model] = du.load_path_from_params(savepath, param_mapping)
     else:
         # load the basemodels together
@@ -299,7 +299,7 @@ def validation_mcnemar_midp(pred_df, best_model_idx, verbose=False):
 
 
 ### Data splitting and model development
-def return_basemodel_preds(basemodel_results):
+def return_basemodel_preds(basemodel_results, verbose=False):
     """
     Given a dictionary of basemodel results, load the predictions for each basemodel
     Input:
@@ -319,13 +319,15 @@ def return_basemodel_preds(basemodel_results):
     all_unseen_preds = {}
     loaded_model_data = {}
     feature_data = {}
-    which_featuresets = basemodel_results.keys()
+    which_featuresets = list(basemodel_results.keys())
     model_names = list(set().union(*basemodel_results.values())) # https://stackoverflow.com/questions/45652155/extract-all-keys-in-the-second-level-of-nested-dictionary/45652179#45652179
     
     model_counter = 1
     for fdx, fset in enumerate(which_featuresets):
         all_dev_preds[fset] = {}
         all_unseen_preds[fset] = {}
+        loaded_model_data[fset] = {}
+        feature_data[fset] = {}
         for mdx, model_name in enumerate(model_names):
             print(f"Loading model {model_counter}/{len(which_featuresets)*len(model_names)}")
             st = time.time()
@@ -333,7 +335,7 @@ def return_basemodel_preds(basemodel_results):
             model, Xtr, Xts, X_hld = mu.load_model_data(json_filename, load_model=True, load_holdout=True)
             Xunseen = pd.concat([Xts, X_hld], axis=0)
             assert len(set(Xtr.index).intersection(set(Xunseen.index))) == 0, f"Overlap between train and unseen: {set(Xtr.index).intersection(set(Xunseen.index))}"
-            _, dev_cv_preds = return_cv_train_test_preds(Xtr, model)
+            _, dev_cv_preds = return_cv_train_test_preds(Xtr, model, verbose=verbose)
 
             yunseen = model.predict_proba(Xunseen)
 
@@ -550,7 +552,7 @@ def return_dev_res_preds_ival_basetrain(results_df, ival_groups, loaded_model_da
     assert len(dev_ival_test_pred_df.index) == len(set(dev_ival_test_pred_df.index)), "Duplicate indices in dev test"
     return dev_ival_test_pred_df, dev_ival_train_pred_df, holdout_pred_df
 
-def return_cv_train_test_preds(X, model, n_cv=None, base_model=True):
+def return_cv_train_test_preds(X, model, n_cv=None, base_model=True, verbose=False):
     """
     For a base model, returns the logo predictions
     (will be slightly optimistic bc hyperparams and features selected on whole dev set)
@@ -566,7 +568,7 @@ def return_cv_train_test_preds(X, model, n_cv=None, base_model=True):
 
     st = time.time()
     if base_model:
-        X_proctr = ma.get_transformed_data(X, model, verbose=False)
+        X_proctr = mu.get_transformed_data(X, model, verbose=verbose)
         clf_name = str(model.best_estimator_.named_steps['classifier'].__class__.__name__)
         clf = model.best_estimator_.named_steps['classifier']
     else:
@@ -617,10 +619,10 @@ def return_cv_train_test_preds(X, model, n_cv=None, base_model=True):
         split_col[idx*train_block_size:(idx+1)*train_block_size] = idx
     testing_preds = pd.DataFrame(testing_preds, columns=[f"class{idx}" for idx in range(2)], index=testing_groups)
     training_preds = pd.DataFrame(training_preds, columns=[f"class{idx}" for idx in range(2)], index=training_groups)
-    # training_preds['split'] = [f"split{idx}" for idx, block_size in enumerate(training_block_sizes) for _ in range(block_size)]
-    print(f"Made my training and testing predictions for {clf_name} in {time.time()-st} seconds, shape: {training_preds.shape}, {testing_preds.shape}, split_col: {len(split_col)}")
     training_preds['split'] = split_col
-    print(f"Computing CV predictions took {time.time()-st} seconds: ({logo_cv.get_n_splits(X_proctr, y_true, groups=groups)} splits)")
+    if verbose:    
+        print(f"Made my training and testing predictions for {clf_name} in {time.time()-st} seconds, shape: {training_preds.shape}, {testing_preds.shape}, split_col: {len(split_col)}")
+        print(f"Computing CV predictions took {time.time()-st} seconds: ({logo_cv.get_n_splits(X_proctr, y_true, groups=groups)} splits)")
     return training_preds, testing_preds
 
 def return_cv_preds(df, loaded_model_data=None, n_jobs=1):
@@ -1481,8 +1483,8 @@ def score_split_dfs(all_test_score_dfs):
     split_scores_df = pd.DataFrame(split_scores, columns=melt_columns, index=[f"split{idx}" for idx in range(n_splits)])
     return split_scores_df
     
-def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath=RESULTS_SAVEPATH,  \
-         internal_folder='data/internal/', metalearners=['rf', 'lr', 'xgb'], reload_results=True, n_jobs=1, n_train_cv=5):
+def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath=BASELEARNERS_SAVEPATH,  \
+         internal_folder='data/internal/', metalearners=['rf', 'lr', 'xgb'], reload_results=True, n_jobs=1, n_train_cv=5, verbose=False):
     """
     Runs the final meta model using baselearners trained with train_all_baselearners.py
     Returns the results of the final model on the default datasplit and n_split perturbations of the unseen internal validation and holdout data
@@ -1497,6 +1499,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         - reload_results: bool, whether to reload the results if they already exist
         - n_jobs: int, number of jobs to run the metamodel gridsearch
         - n_train_cv: int, number of cross validation splits to use for training the metamodels
+        - verbose: bool, whether to print out the progress of the function
     Outputs:
         - all_results: dict, dictionary containing the results of the default and n_splits of the final model
 
@@ -1528,7 +1531,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### get the train and test predictions
         print(f"Getting train and test predictions")
-        dev_pred_df, unseen_pred_df, loaded_model_data, feature_data= return_basemodel_preds(basemodel_results)
+        dev_pred_df, unseen_pred_df, loaded_model_data, feature_data= return_basemodel_preds(basemodel_results, verbose=verbose)
         ival_pred_df, holdout_pred_df = split_unseen_preds(unseen_pred_df, internal_folder=internal_folder, default=True)
 
         ### Select the best models
@@ -1654,13 +1657,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the final ensemble model')
     parser.add_argument('--delay', type=int, default=0, help='Delay in seconds before running the script')
     parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg', 'ecg'], help='Which featuresets to use')
-    parser.add_argument('--savepath', type=str, default=RESULTS_SAVEPATH, help='Path to the results folder')
+    parser.add_argument('--savepath', type=str, default=BASELEARNERS_SAVEPATH, help='Path to the baselearners')
     parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=False)
     parser.add_argument('--internal_folder', type=str, default='data/internal/', help='Path to the internal folder')
     parser.add_argument('--n_splits', type=int, default=10, help='Number of splits for the ensemble')
     parser.add_argument('--metalearners', type=str, nargs='+', default=['rf', 'lr', 'xgb'], help='Metalearners to use')
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run the metamodel gridsearch')
     parser.add_argument('--n_train_cv', type=int, default=5, help='Number of splits for the ensemble')
+    parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, help='Whether to print out the progress of the function', default=True)
     args = parser.parse_args()
 
     # ask the user if the arguments are correct

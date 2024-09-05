@@ -18,21 +18,18 @@ DATASETS_NAME_DICT = {
 }
 
 MODEL_NAME_DICT = {
-    "xgb": "XGBClassifier",
-    "rf": "RandomForestClassifier",
-    "knn": "KNeighborsClassifier",
-    "gnb": "GaussianNB",
-    "ada": "AdaBoost",
-    "lre": "LogisticRegression",
+    "xgb": "XGBRegressor",
+    "rf": "RandomForestRegressor",
+    "knn": "KNeighborsRegressor",
+    "lre": "ElasticNet",
 }
-
 
 
 DATAPATH = open('extracted_path.txt', 'r').read().strip() 
 LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
-OUTBASE = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'outfiles', 'baselearners')
+OUTBASE = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'outfiles', 'baseregressors')
 
 def get_avg_idle_cores(duration=30):
     """
@@ -80,17 +77,18 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
     """
     print(f"Beginning to run {n_jobs} jobs in parallel")
     # call the python script with the correct arguments
+    # make the outbase
     if outbase is not None:
         os.makedirs(outbase, exist_ok=True)
         
-    base_call = ("python3 mtbi_detection/modeling/train_baselearners.py --reference_method=CSD --n_jobs={n_jobs} "
+    base_call = ("python3 mtbi_detection/modeling/train_baseregressors.py --reference_method=CSD --n_jobs={n_jobs} "
                  "--n_hyper_cv={n_hyper_cv} --n_fs_cv={n_fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats} "
                  "--model_name={model_name} --n_iterations={n_iterations} --n_points={n_points} --skip_ui --verbosity=2 "
                  "--results_savepath={results_savepath} --which_features {which_features0} {which_features1} {which_features2} "
                  "{out_appdx}")
     n_total_runs = 0
     curr_run = 0
-    model_shortcuts = ["xgb", "rf", "knn",  "gnb", "ada", "lre"] 
+    model_shortcuts = ["xgb", "rf", "knn", "lre"] 
     all_permutations = generate_filtered_permutations(feat_shortcuts, exclusions=["sel", "sym"])
     n_total_runs = len(all_permutations) * len(model_shortcuts)
     print(f"Total number of runs: {n_total_runs}")

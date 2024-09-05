@@ -11,7 +11,14 @@ def main(dlpath, datapath):
     extract_data.main(dlpath, datapath)
     load_open_closed_data.load_open_closed_pathdict(datapath)
     train_all_baselearners.main()
+    final_metamodel.main()
     evaluate_final_models.main()
+
+    # regression models
+    extract_symptoms_data.main(dlpath, datapath)
+    train_all_baseregressors.main()
+    final_metaregressor.main()
+    evaluate_final_regressors.main()
 
 if __name__ == "__main__":
 

@@ -13,6 +13,7 @@ from typing import Dict, List, Tuple
 from pandas.core.frame import DataFrame
 
 import mtbi_detection.data.load_dataset as ld
+import mtbi_detection.data.load_symptoms as ls
 import mtbi_detection.features.gradiompy_integrate as gp_integrate
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz','T1','T2','T3','T4','T5','T6']
 LABEL_DICT = ld.load_label_dict()
@@ -403,9 +404,18 @@ def avg_rmse(y_true, y_pred):
     rmse = np.sqrt(sklearn.metrics.mean_squared_error(y_true, y_pred, multioutput='uniform_average'))
     return rmse
 
+
 def avg_rank_rmse(y_true, y_pred):
     """
-    Towards Better Evaluation of Multi-Target Regression Models
+    Towards Better Evaluation of Multi-Target Regression Models: https://link.springer.com/chapter/10.1007/978-3-030-65965-3_23
+    'Every model which is the best in terms of aRRMSE is Pareto-optimal'
+
+    Average rank RMSE for multitask regression allows for comparison of models across multiple targets in a scale-invariant way
+    Inputs:
+    y_true: np.array of shape (n_samples, n_targets)    
+    y_pred: np.array of shape (n_samples, n_targets)
+    Returns:
+    avg_rank_rmse: float
     """
     rank_y_true = scipy.stats.rankdata(y_true, axis=0)
     rank_y_pred = scipy.stats.rankdata(y_pred, axis=0)
@@ -965,6 +975,22 @@ def get_y_from_df(df, label_dict=LABEL_DICT):
     """
     assert all([int(ind) in label_dict for ind in df.index]), "Not all indices in the dataframe are in the label dictionary"
     return np.array([label_dict[int(ind)] for ind in df.index])
+
+# regression
+def get_reg_from_df(df):
+    """
+    Return the total ACE score and the total Rivermead Score for each subject at the baseline in the input dataframe
+    Inputs:
+        df: DataFrame with index as subject ID
+    Returns
+        out_reg: dataframe with two colums: Total_ACE and Total_Rivermead
+    """
+    all_processed_symptoms = ls.process_symptoms(symptoms_only=True, with_nans=True, verbose=False)
+    subject_symptoms = all_processed_symptoms.loc[[int(ind) for ind in df.index]]
+    colois = ['Total_ACE', 'Total_Rivermead']
+    out_reg = subject_symptoms[colois]
+    assert np.all(out_reg.index == df.index)
+    return out_reg
 
 def drop_duplicate_columns(df):
     """Drops any columns with duplicate name and values from a dataframe.

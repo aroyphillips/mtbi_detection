@@ -592,13 +592,17 @@ def check_savepath(savepath, skip_ui=False):
 def clean_params_path(savepath, skip_ui=False):
     """
     Given a savepath to be used for saving params, clean the path by removing all the unused params subdirectories
+    Inputs:
+        savepath: the path to the directory to save the data /path/to/savepath/params
+        skip_ui: boolean, whether or not to skip the user interface confirmation
+
     """
     if not os.path.exists(os.path.join(savepath, 'params')):
         os.makedirs(os.path.join(savepath, 'params'))
     else:
         cleanpath.cleanpath(os.path.join(savepath, 'params'), skip_ui=skip_ui)
     
-def load_path_from_params(basepath, key_mappings, stric_search=True):
+def load_path_from_params(basepath, key_mappings, strict_search=True):
     """
     Given a basepath to a folder container parameters and a dictionary of key mappings, load the model and return it.
     Inputs:
@@ -608,21 +612,22 @@ def load_path_from_params(basepath, key_mappings, stric_search=True):
         - modelpath (str): The path to the model
     NOTE: if there are multiple possible paths this will return the first one found
     """
-    assert 'params' in os.listdir(basepath)
-    params_folder = os.path.join(basepath, 'params')
-    params_folders = [f for f in os.listdir(params_folder) if os.path.isdir(os.path.join(params_folder, f))]
+    assert 'params' in os.listdir(basepath), f"params folder not found in {basepath}"
+    baseparams_folder = os.path.join(basepath, 'params')
+    clean_params_path(baseparams_folder, skip_ui=True)
+    params_folders = [f for f in os.listdir(baseparams_folder) if os.path.isdir(os.path.join(baseparams_folder, f))]
     modelpath = None
     for params_folder in params_folders:
-        with open(os.path.join(params_folder, 'params.json'), 'r') as f:
+        with open(os.path.join(baseparams_folder, params_folder, 'params.json'), 'r') as f:
             params = json.load(f)
         if not all([key in params.keys() for key in key_mappings.keys()]):
-            if stric_search:
+            if strict_search:
                 raise ValueError(f"Key mappings {key_mappings} not in {params_folder}")
             else:
                 print(f"Warning: {[key for key in key_mappings.keys() if key not in params.keys()]} not in {params_folder}")
                 continue
         if all([params[key] == value for key, value in key_mappings.items()]):
-            modelpath = params_folder
+            modelpath = os.path.join(baseparams_folder, params_folder)
             break
     if modelpath is None:
         raise ValueError(f"Model not found in {basepath} with key mappings {key_mappings}")
