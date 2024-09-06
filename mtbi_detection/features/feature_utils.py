@@ -987,8 +987,14 @@ def get_reg_from_df(df):
     """
     all_processed_symptoms = ls.process_symptoms(symptoms_only=True, with_nans=True, verbose=False)
     subject_symptoms = all_processed_symptoms.loc[[int(ind) for ind in df.index]]
-    colois = ['Total_ACE', 'Total_Rivermead']
-    out_reg = subject_symptoms[colois]
+    ace_cols = [c for c in subject_symptoms.columns if "ACE" in c and "MACE" not in c]
+    rivermead_cols = [c for c in subject_symptoms.columns if "Rivermead" in c] 
+    assert all(["total" not in c.lower() for c in ace_cols]), "ACE columns should not have 'total' in the name"
+    assert all(["total" not in c.lower() for c in rivermead_cols]), "Rivermead columns should not have 'total' in the name"
+    ace_total = subject_symptoms[ace_cols].sum(axis=1)
+    rivermead_total = subject_symptoms[rivermead_cols].sum(axis=1)
+    cols = ['Total_ACE', 'Total_Rivermead']
+    out_reg = pd.DataFrame(np.array([ace_total, rivermead_total]).T, columns=cols, index=df.index)
     assert np.all(out_reg.index == df.index)
     return out_reg
 

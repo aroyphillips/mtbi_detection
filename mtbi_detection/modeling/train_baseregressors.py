@@ -136,8 +136,8 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
         y_train = y_train_df.values
         y_train_means = y_train_df.mean(axis=0)
         y_train_stds = y_train_df.std(axis=0)
-        assert len(y_train_means) == y.shape[1], "y_train_means does not match y"
-        assert len(y_train_stds) == y.shape[1], "y_train_stds does not match y"
+        assert len(y_train_means) == y_train.shape[1], "y_train_means does not match y_train"
+        assert len(y_train_stds) == y_train.shape[1], "y_train_stds does not match y_train"
 
         assert(len(fu.print_infs(X_train)[0])==0)
         groups_train = X_train.index.values.astype(int)

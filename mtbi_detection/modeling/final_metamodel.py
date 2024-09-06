@@ -299,12 +299,13 @@ def validation_mcnemar_midp(pred_df, best_model_idx, verbose=False):
 
 
 ### Data splitting and model development
-def return_basemodel_preds(basemodel_results, verbose=False):
+def return_basemodel_preds(basemodel_results, n_basetrain_cv=None, verbose=False):
     """
     Given a dictionary of basemodel results, load the predictions for each basemodel
     Input:
         - basemodel_results: a dictionary containing keys for each featureset and a 
             {'eeg': {'basemodel_name1': basemodelpath1, ...}, 'ecg': {'basemodel_name1': basemodelpath1, ...}}
+        - n_basetrain_cv: number of splits to do for the train cv
     Output:
         - basemodel_preds: a dictionary containing keys for each featureset, and a dictionary of basemodel predictions
             - dev_preds: a dataframe with the predictions on the development set
@@ -331,13 +332,14 @@ def return_basemodel_preds(basemodel_results, verbose=False):
         for mdx, model_name in enumerate(model_names):
             print(f"Loading model {model_counter}/{len(which_featuresets)*len(model_names)}")
             st = time.time()
-            json_filename = basemodel_results[fset][model_name]
-            model, Xtr, Xts, X_hld = mu.load_model_data(json_filename, load_model=True, load_holdout=True)
+            modelpath = basemodel_results[fset][model_name]
+            model, Xtr, Xts, X_hld = mu.load_model_data(modelpath, load_model=True, load_holdout=True)
             Xunseen = pd.concat([Xts, X_hld], axis=0)
             assert len(set(Xtr.index).intersection(set(Xunseen.index))) == 0, f"Overlap between train and unseen: {set(Xtr.index).intersection(set(Xunseen.index))}"
-            _, dev_cv_preds = return_cv_train_test_preds(Xtr, model, verbose=verbose)
-
+            _, dev_cv_preds = return_cv_train_test_preds(Xtr, model, n_cv=n_basetrain_cv, verbose=verbose)
+            dev_cv_preds.columns = [f"{model_name}_{idx}" for idx in range(2)]
             yunseen = model.predict_proba(Xunseen)
+            yunseen = pd.DataFrame(yunseen, columns=[f"{model_name}_{idx}" for idx in range(2)], index=Xunseen.index)
 
             all_dev_preds[fset][model_name] = dev_cv_preds
             all_unseen_preds[fset][model_name] = yunseen
@@ -351,19 +353,29 @@ def return_basemodel_preds(basemodel_results, verbose=False):
                 assert np.array_equal(X_hld.values, feature_data[fset]['X_hld'].values, equal_nan=True), "Holdout data does not match"
                 assert all([all(Xtr.index == feature_data[fset]['Xtr'].index), all(Xts.index == feature_data[fset]['Xts'].index), all(X_hld.index == feature_data[fset]['X_hld'].index)]), "Indices do not match"
 
-    assert all([all(all_dev_preds[which_featuresets[0]][model_names[0]].index == all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
-    assert all([all(all_unseen_preds[which_featuresets[0]][model_names[0]].index == all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
+    # assert all([all(all_dev_preds[which_featuresets[0]][model_names[0]].index == all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
+    # assert all([all(all_unseen_preds[which_featuresets[0]][model_names[0]].index == all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
     
-    dev_pred_groups = all_dev_preds[which_featuresets[0]][model_names[0]].index
-    unseen_pred_groups = all_unseen_preds[which_featuresets[0]][model_names[0]].index
+    # dev_pred_groups = all_dev_preds[which_featuresets[0]][model_names[0]].index
+    dev_pred_groups = set(all_dev_preds[which_featuresets[0]][model_names[0]].index)
+    dev_pred_groups = dev_pred_groups.intersection(*[set(all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
+    unseen_pred_groups = set(all_unseen_preds[which_featuresets[0]][model_names[0]].index)
+    unseen_pred_groups = unseen_pred_groups.intersection(*[set(all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
 
-    dev_preds = np.concatenate([all_dev_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
-    unseen_preds = np.concatenate([all_unseen_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
-    dev_pred_df = pd.DataFrame(dev_preds, columns=[f"{basemodel_results[fs][mn].split('/')[-1]}_{idx}" for fs in which_featuresets for mn in model_names for idx in range(2)], index=dev_pred_groups)
-    unseen_pred_df = pd.DataFrame(unseen_preds, columns=[f"{basemodel_results[fs][mn].split('/')[-1]}_{idx}" for fs in which_featuresets for mn in model_names for idx in range(2)], index=unseen_pred_groups)
+    # unseen_pred_groups = all_unseen_preds[which_featuresets[0]][model_names[0]].index
 
-    assert len(dev_pred_df.index) == len(set(dev_pred_df.index)), "Duplicate indices in dev test"
-    return dev_pred_df, unseen_pred_df, loaded_model_data, feature_data
+    dev_preds = pd.concat([all_dev_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
+    unseen_preds = pd.concat([all_unseen_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
+
+    # only keep the groups that are in all predictions
+    dev_preds = dev_preds.loc[dev_pred_groups]
+    unseen_preds = unseen_preds.loc[unseen_pred_groups]
+
+    # dev_pred_df = pd.DataFrame(dev_preds, columns=[f"{basemodel_results[fs][mn].split('/')[-1]}_{idx}" for fs in which_featuresets for mn in model_names for idx in range(2)], index=dev_pred_groups)
+    # unseen_pred_df = pd.DataFrame(unseen_preds, columns=[f"{basemodel_results[fs][mn].split('/')[-1]}_{idx}" for fs in which_featuresets for mn in model_names for idx in range(2)], index=unseen_pred_groups)
+
+    assert len(dev_preds.index) == len(set(dev_preds.index)), "Duplicate indices in dev test"
+    return dev_preds, unseen_preds, loaded_model_data, feature_data
 
 def split_unseen_preds(unseen_preds, internal_folder='data/internal/', default=True, random_seed=0):
     """
@@ -394,7 +406,7 @@ def split_unseen_preds(unseen_preds, internal_folder='data/internal/', default=T
     return ival_preds, holdout_preds
 
 
-def return_split_results(default_savepaths, n_splits=10, n_train_cv=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=1):
+def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=1):
     """
     Given a dictionary that contains the paths to:
         - dev_basepreds: path to the development set predictions 
@@ -443,7 +455,7 @@ def return_split_results(default_savepaths, n_splits=10, n_train_cv=5, metalearn
 
         ival_labels, holdout_labels = fu.get_y_from_df(ival_preds), fu.get_y_from_df(holdout_preds)
 
-        fitted_split_metamodels, fitted_split_fitscores = train_metamodel_on_preds(select_split_dev_ival_preds, select_split_holdout_preds, n_cv=n_train_cv, n_jobs=n_jobs)
+        fitted_split_metamodels, fitted_split_fitscores = train_metamodel_on_preds(select_split_dev_ival_preds, select_split_holdout_preds, n_cv=n_metatrain_cv, n_jobs=n_jobs)
 
         split_results, _ = test_models_on_unseen_data(fitted_split_metamodels, select_split_holdout_preds, metalearners=metalearners)
 
@@ -1484,7 +1496,7 @@ def score_split_dfs(all_test_score_dfs):
     return split_scores_df
     
 def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath=BASELEARNERS_SAVEPATH,  \
-         internal_folder='data/internal/', metalearners=['rf', 'lr', 'xgb'], reload_results=True, n_jobs=1, n_train_cv=5, verbose=False):
+         internal_folder='data/internal/', metalearners=['rf', 'lr', 'xgb'], reload_results=True, n_jobs=1, n_basetrain_cv=None, n_metatrain_cv=5, verbose=False):
     """
     Runs the final meta model using baselearners trained with train_all_baselearners.py
     Returns the results of the final model on the default datasplit and n_split perturbations of the unseen internal validation and holdout data
@@ -1498,7 +1510,8 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         - metalearners: list of strings, which metalearners to use ['rf', 'lr', 'xgb']
         - reload_results: bool, whether to reload the results if they already exist
         - n_jobs: int, number of jobs to run the metamodel gridsearch
-        - n_train_cv: int, number of cross validation splits to use for training the metamodels
+        - n_basetrain_cv: int, number of cross validation splits to use for training the baselearners (if None, uses the default logo cv)
+        - n_metatrain_cv: int, number of cross validation splits to use for training the metamodels
         - verbose: bool, whether to print out the progress of the function
     Outputs:
         - all_results: dict, dictionary containing the results of the default and n_splits of the final model
@@ -1531,7 +1544,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### get the train and test predictions
         print(f"Getting train and test predictions")
-        dev_pred_df, unseen_pred_df, loaded_model_data, feature_data= return_basemodel_preds(basemodel_results, verbose=verbose)
+        dev_pred_df, unseen_pred_df, loaded_model_data, feature_data= return_basemodel_preds(basemodel_results, n_basetrain_cv=n_basetrain_cv, verbose=verbose)
         ival_pred_df, holdout_pred_df = split_unseen_preds(unseen_pred_df, internal_folder=internal_folder, default=True)
 
         ### Select the best models
@@ -1542,7 +1555,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### Train the metamodels using the dev and ival predictions
         print(f"Fitting metamodels on dev predictions")
-        fitted_metamodels, metamodel_fitscores = train_metamodel_on_preds(select_dev_ival_pred_df, cv=n_train_cv, n_jobs=n_jobs)
+        fitted_metamodels, metamodel_fitscores = train_metamodel_on_preds(select_dev_ival_pred_df, cv=n_metatrain_cv, n_jobs=n_jobs)
 
         ### Test the metamodels on the holdout data
         print(f"Testing metamodels on unseen data")
@@ -1554,7 +1567,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### Repeat the process for n_splits
         print(f"Running the final metamodel on n_splits")
-        n_split_results, split_results_df, overall_perturbation_results_df = return_split_results(default_results_saved, n_splits, n_train_cv)
+        n_split_results, split_results_df, overall_perturbation_results_df = return_split_results(default_results_saved, n_splits, n_metatrain_cv)
 
         ### Save the results
         print(f"Saving the perturbation split results")
@@ -1579,7 +1592,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
     return all_results
 
 def load_ensemble_results(which_results='csd_fecg', savepath='/shared/roy/mTBI/mTBI_Classification/cv_results/final_results_resfit_ensemble_splits/', which_dataset='late_eeg_ecg', n_splits=10, metalearners=['rf', 'lr', 'xgb'],  ival_metatrain=False, ival_basetrain=False, ival_basetrain_cv=None, to_select_base_models=False):
-    fset_savepath = os.path.join(savepath, which_fs, which_dataset)
+    fset_savepath = os.path.join(savepath, which_dataset)
 
     if to_select_base_models:
         fset_savepath = os.path.join(fset_savepath, 'select_base_models')
@@ -1663,7 +1676,8 @@ if __name__ == '__main__':
     parser.add_argument('--n_splits', type=int, default=10, help='Number of splits for the ensemble')
     parser.add_argument('--metalearners', type=str, nargs='+', default=['rf', 'lr', 'xgb'], help='Metalearners to use')
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run the metamodel gridsearch')
-    parser.add_argument('--n_train_cv', type=int, default=5, help='Number of splits for the ensemble')
+    parser.add_argument('--n_basetrain_cv', type=int, default=5, help='Number of splits to use for training the baselearners')
+    parser.add_argument('--n_metatrain_cv', type=int, default=5, help='Number of splits for the ensemble')
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, help='Whether to print out the progress of the function', default=True)
     args = parser.parse_args()
 
