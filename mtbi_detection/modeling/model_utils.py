@@ -10,6 +10,8 @@ import pandas as pd
 
 from sklearn.utils.validation import check_is_fitted
 
+import mtbi_detection.modeling.feature_utils as fu
+
 
 ### SCORING 
 def score_binary_preds(y_pred_proba=None, y_test=None, y_pred=None, verbose=0):
@@ -391,3 +393,133 @@ def get_wrapper_features(wrapper, columns, verbose=True):
     else:
         pass
     return selected_features
+
+### multi output regression
+def score_multireg_model(model, X_test, y_test, norm_means=None, norm_stds=None):
+    """
+    Given a fitted sklearn model, X_test, and y_test, return a dictionary of scores for multi-output regression
+    Inputs:
+        - model (sklearn model): the fitted model
+        - X_test (pd.DataFrame): the testing data
+        - y_test (pd.DataFrame): the testing labels
+        - norm_means (optional): the normalization means
+        - norm_stds (optional): the normalization standard deviations
+    
+    """
+    check_is_fitted(model)
+    y_test = convert_obj_to_array(y_test)
+    y_pred = model.predict(X_test)
+
+    if norm_means is not None and norm_stds is not None:
+
+        norm_means = convert_obj_to_array(norm_means)
+        norm_stds = convert_obj_to_array(norm_stds)
+        if type(norm_means) == int or type(norm_means) == float:
+            y_pred = (y_pred - norm_means) / norm_stds
+            y_test = (y_test - norm_means) / norm_stds
+        elif norm_means.shape[0] == y_pred.shape[0] and norm_means.shape[1] == y_pred.shape[1]:
+            
+            y_pred = np.divide(y_pred - norm_means, norm_stds)
+            y_test = np.divide(y_test - norm_means,  norm_stds)
+        elif norm_means.shape[0] == y_pred.shape[1]:
+            y_pred = np.divide(y_pred - norm_means[np.newaxis, :], norm_stds[np.newaxis, :])
+            y_test = np.divide(y_test - norm_means[np.newaxis, :],  norm_stds[np.newaxis, :])
+        else:
+            raise ValueError(f"Unknown type for norm_means: {type(norm_means)} and norm_stds: {type(norm_stds)}, or incompatible shapes: means {norm_means.shape} and preds {y_pred.shape}")
+
+    out_dict = score_multireg_preds(y_pred, y_test)
+    return out_dict
+
+def score_multireg_preds(y_pred, y_test):
+    """
+    Given predicted and true labels for multi-output regression, return a dictionary of scores
+    Inputs:
+        - y_pred (np.ndarray): the predicted labels
+        - y_test (np.ndarray): the true labels
+    Returns:
+        - out_dict (dict): dictionary of scores {metric: value}
+    """ 
+    perf_zeros = ['rmse', 'mae', 'medae', 'r2']
+    perf_ones = ['pearson', 'spearman', 'r2']
+    eval_scoring = {'avg_pearson': fu.avg_pearson_pred, 
+                'avg_spearman': fu.avg_spearman_pred, 
+                'avg_rmse': fu.avg_rmse,
+                'avg_mae': fu.avg_mae_pred,
+                'avg_medae': fu.avg_medae_pred,
+                'avg_r2': fu.avg_r2_pred,
+                'max_pearson': fu.max_pearson_pred,
+                'max_spearman': fu.max_spearman_pred,
+                'max_rmse': fu.max_rmse_pred,
+                'max_mae': fu.max_mae_pred,
+                'max_medae': fu.max_medae_pred,
+                'max_r2': fu.max_r2_pred,
+                'median_pearson': fu.med_pearson_pred,
+                'median_spearman': fu.med_spearman_pred,
+                'median_rmse': fu.med_rmse_pred,
+                'median_mae': fu.med_mae_pred,
+                'median_medae': fu.med_medae_pred,
+                'median_r2': fu.med_r2_pred,
+                'min_pearson': fu.min_pearson_pred,
+                'min_spearman': fu.min_spearman_pred,
+                'min_rmse': fu.min_rmse_pred,
+                'min_mae': fu.min_mae_pred,
+                'min_medae': fu.min_medae_pred,
+                'min_r2': fu.min_r2_pred,
+                'stacked_rmse': fu.stacked_rmse_pred,
+                'stacked_mae': fu.stacked_mae_pred,
+                'stacked_medae': fu.stacked_medae_pred,
+                'stacked_pearson': fu.stacked_pearson_pred,   
+                'stacked_spearman': fu.stacked_spearman_pred,
+                'stacked_r2': fu.stacked_r2_pred,
+            }
+    out_dict = {}
+    for key, scorer in eval_scoring.items():
+        if scorer(y_test, y_pred) is None or np.isnan(scorer(y_test, y_pred)):
+            if any([perf in key for perf in perf_zeros]):
+                out_dict[key] = 100
+            elif any([perf in key for perf in perf_ones]):
+                out_dict[key] = -100
+        else:
+            out_dict[key] = scorer(y_test, y_pred)
+    return out_dict  
+
+def convert_obj_to_array(obj):
+    """
+    Given an object, return the object as a numpy array
+       
+    """
+    if type(obj) == pd.DataFrame:
+        return obj.values
+    elif type(obj) == pd.Series:
+        return obj.values
+    elif type(obj) in [list, tuple]:  
+        return np.array(obj)
+    elif type(obj) == set:
+        return np.array(list(obj))
+    elif type(obj) == int or type(obj) == float:
+        return np.array([obj])
+    elif type(obj) == np.ndarray:
+        return obj
+    else:
+        raise ValueError(f"Unknown type: {type(obj)}")
+    
+
+def print_multireg_scores(out_dict):
+    """
+    Print the scores from a score_multireg_model output dictionary
+    out_dict: output dictionary from score_multireg_model
+    """
+
+    print(f"Pearson: avg: {out_dict['avg_pearson']}, max: {out_dict['max_pearson']}, median: {out_dict['median_pearson']}, min: {out_dict['min_pearson']}")
+    print(f"Spearman: avg: {out_dict['avg_spearman']}, max: {out_dict['max_spearman']}, median: {out_dict['median_spearman']}, min: {out_dict['min_spearman']}")
+    print(f"RMSE: avg: {out_dict['avg_rmse']}, max: {out_dict['max_rmse']}, median: {out_dict['median_rmse']}, min: {out_dict['min_rmse']}")
+    print(f"MAE: avg: {out_dict['avg_mae']}, max: {out_dict['max_mae']}, median: {out_dict['median_mae']}, min: {out_dict['min_mae']}")
+    print(f"MedAE: avg: {out_dict['avg_medae']}, max: {out_dict['max_medae']}, median: {out_dict['median_medae']}, min: {out_dict['min_medae']}")
+    print(f"R2: avg: {out_dict['avg_r2']}, max: {out_dict['max_r2']}, median: {out_dict['median_r2']}, min: {out_dict['min_r2']}")
+
+    print(f"Stacked RMSE: {out_dict['stacked_rmse']}")
+    print(f"Stacked MAE: {out_dict['stacked_mae']}")
+    print(f"Stacked MedAE: {out_dict['stacked_medae']}")
+    print(f"Stacked Pearson: {out_dict['stacked_pearson']}")
+    print(f"Stacked Spearman: {out_dict['stacked_spearman']}")
+    

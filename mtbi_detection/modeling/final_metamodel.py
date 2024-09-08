@@ -358,9 +358,9 @@ def return_basemodel_preds(basemodel_results, n_basetrain_cv=None, verbose=False
     
     # dev_pred_groups = all_dev_preds[which_featuresets[0]][model_names[0]].index
     dev_pred_groups = set(all_dev_preds[which_featuresets[0]][model_names[0]].index)
-    dev_pred_groups = dev_pred_groups.intersection(*[set(all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
+    dev_pred_groups = list(dev_pred_groups.intersection(*[set(all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names]))
     unseen_pred_groups = set(all_unseen_preds[which_featuresets[0]][model_names[0]].index)
-    unseen_pred_groups = unseen_pred_groups.intersection(*[set(all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
+    unseen_pred_groups = list(unseen_pred_groups.intersection(*[set(all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names]))
 
     # unseen_pred_groups = all_unseen_preds[which_featuresets[0]][model_names[0]].index
 
@@ -1676,7 +1676,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_splits', type=int, default=10, help='Number of splits for the ensemble')
     parser.add_argument('--metalearners', type=str, nargs='+', default=['rf', 'lr', 'xgb'], help='Metalearners to use')
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run the metamodel gridsearch')
-    parser.add_argument('--n_basetrain_cv', type=int, default=5, help='Number of splits to use for training the baselearners')
+    parser.add_argument('--n_basetrain_cv', type=int, default=None, help='Number of splits to use for training the baselearners')
     parser.add_argument('--n_metatrain_cv', type=int, default=5, help='Number of splits for the ensemble')
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, help='Whether to print out the progress of the function', default=True)
     args = parser.parse_args()

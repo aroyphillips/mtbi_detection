@@ -351,12 +351,13 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
 
 
         print("___TRAIN RESULTS___")
-        mu.print_binary_scores(train_results)
+        mu.print_multireg_scores(train_results)
         print("___________________")
-        print("___INTERNAL VALIDATION (TEST) RESULTS___")
-        mu.print_binary_scores(ival_results)
+        print("___TEST RESULTS___")
+        mu.print_multireg_scores(ival_results)
         print("__________________")
         print("Saving results...")
+
 
 
         currtime = time.strftime("%Y%m%d-%H%M%S")
@@ -447,10 +448,10 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
             json.dump(all_params, f)
 
         print("___TRAIN RESULTS___")
-        mu.print_binary_scores(train_results)
+        mu.print_multireg_scores(train_results)
         print("___________________")
         print("___TEST SCORES: INTERNAL VALIDATION (TEST) RESULTS___")
-        mu.print_binary_scores(ival_results)
+        mu.print_multireg_scores(ival_results)
         print("__________________")
         print(f"Saved results to {savepath}: total time to here: {time.time() - totaltime}")
 
