@@ -10,7 +10,7 @@ import pandas as pd
 
 from sklearn.utils.validation import check_is_fitted
 
-import mtbi_detection.modeling.feature_utils as fu
+import mtbi_detection.features.feature_utils as fu
 
 
 ### SCORING 
@@ -195,6 +195,43 @@ def print_binary_scores(score_dict):
             print(f"{possible_scores[score]}: {score_dict[score]}")
         except:
             pass
+
+def compute_select_binary_scores(y_true, y_pred, y_pred_proba):
+    """
+    Given the true labels, predicted labels, and predicted probabilities, calculate binary classification scores (MCC, ROC AUC, Balanced Accuracy, Sensitivity, Specificity)
+    Inputs:
+        - y_true: true labels
+        - y_pred: predicted labels (binary)
+        - y_pred_proba: predicted probabilities
+    Outputs:
+        - score_dict: dictionary containing the scores and predictions of the metalearners on the unseen data
+            e.g. {'scores': {'MCC': mcc, 'ROC AUC': roc_auc, 'Balanced Accuracy': balanced_accuracy, 'Sensitivity': sensitivity, 'Specificity': specificity
+            'roc_curve': {'fpr': fpr, 'tpr': tpr, 'thresh': thresh}
+            'preds': y_pred
+            'pred_probs': y_pred_proba}
+    
+    """
+    # scores
+    assert len(y_true) == len(y_pred), "y_true and y_pred must have the same length"
+    assert len(y_true) == len(y_pred_proba), "y_true and y_pred_proba must have the same length"
+    assert len(np.unique(y_true)) == 2, "y_true must be binary"
+    assert len(np.unique(y_pred)) == 2, "y_pred must be binary"
+    assert y_pred_proba.shape[1] == 2, "y_pred_proba must have 2 columns"
+    assert np.allclose(y_pred_proba.sum(axis=1), 1), "y_pred_proba must sum to 1"
+
+    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
+    roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred)
+    balanced_accuracy = sklearn.metrics.balanced_accuracy_score(y_true, y_pred)
+    sensitivity = sklearn.metrics.recall_score(y_true, y_pred, pos_label=1)
+    specificity = sklearn.metrics.recall_score(y_true, y_pred, pos_label=0)
+
+    #roc_curve
+    fpr, tpr, thresh = sklearn.metrics.roc_curve(y_true, y_pred_proba[:,1])
+    score_dict = {'scores': {'MCC': mcc, 'ROC AUC': roc_auc, 'Balanced Accuracy': balanced_accuracy, 'Sensitivity': sensitivity, 'Specificity': specificity},
+                                        'roc_curve': {'fpr': fpr, 'tpr': tpr, 'thresh': thresh},
+                                        'preds': y_pred,
+                                        'pred_probs': y_pred_proba}  
+    return score_dict
 
 ### Statistical Tests
 
@@ -404,7 +441,8 @@ def score_multireg_model(model, X_test, y_test, norm_means=None, norm_stds=None)
         - y_test (pd.DataFrame): the testing labels
         - norm_means (optional): the normalization means
         - norm_stds (optional): the normalization standard deviations
-    
+    Returns:
+        - out_dict (dict): dictionary of scores {metric: value}    
     """
     check_is_fitted(model)
     y_test = convert_obj_to_array(y_test)
@@ -503,7 +541,6 @@ def convert_obj_to_array(obj):
     else:
         raise ValueError(f"Unknown type: {type(obj)}")
     
-
 def print_multireg_scores(out_dict):
     """
     Print the scores from a score_multireg_model output dictionary
@@ -523,3 +560,35 @@ def print_multireg_scores(out_dict):
     print(f"Stacked Pearson: {out_dict['stacked_pearson']}")
     print(f"Stacked Spearman: {out_dict['stacked_spearman']}")
     
+def compute_select_multireg_scores(y_true, y_pred, col_names):
+    """
+    Compute the scores for the multi-output regression predictions
+
+    Note: since the ACE and RIVERMEAD scores are both 0 to 100 we shouldn't need to normalize them for the stacked scores
+    
+    Inputs:
+        - y_true: true labels
+        - y_pred: predicted labels
+        - col_names: column names
+    Outputs:
+        - out_scores: dictionary of scores 
+            {'col_name': {'rmse': rmse, 'rrmse': rrmse, 'spearman': spearman, 'pearson': pearson}, 'aggregate': {'avg_rmse': avg_rmse, 'avg_rrmse': avg_rrmse, 'stacked_spearman': stacked_spearman, 'stacked_pearson': stacked_pearson}}
+    """
+    
+    out_scores = {}
+    for idx, col in enumerate(col_names):
+
+        rmse = sklearn.metrics.mean_squared_error(y_true[col], y_pred[:, idx], squared=False)
+        rrmse = fu.avg_rank_rmse(y_true[col], y_pred[:, idx])
+        spearman = stats.spearmanr(y_true[col], y_pred[:, idx], axis=0)[0]
+        pearson = stats.pearsonr(y_true[col], y_pred[:, idx])[0]
+
+        out_scores[col] = {'rmse': rmse, 'rrmse': rrmse, 'spearman': spearman, 'pearson': pearson}
+    avg_rmse = fu.avg_rmse(y_true.values, y_pred)
+    avg_rrmse = fu.avg_rank_rmse(y_true.values, y_pred)
+    stacked_spearman = fu.stacked_spearman_pred(y_true.values, y_pred)
+    stacked_pearson = fu.stacked_pearson_pred(y_true.values, y_pred)
+
+    out_scores['aggregate'] = {'avg_rmse': avg_rmse, 'avg_rrmse': avg_rrmse, 'stacked_spearman': stacked_spearman, 'stacked_pearson': stacked_pearson}
+
+    return out_scores
