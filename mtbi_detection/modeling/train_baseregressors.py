@@ -182,7 +182,7 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
 
         param_grid['vart__threshold'] = [0.0, 0.01, 0.05, 0.1]
 
-        feature_filter = fu.UnivariateThresholdSelector(fu.avg_mi_reg, threshold=0.05, discrete_features=False, min_features=100)
+        feature_filter = UnivariateThresholdSelector(fu.avg_mi_reg, threshold=0.05, min_features=100)
         param_grid['filter__score_func'] = [fu.avg_mi_reg, fu.avg_pearson_corr, fu.avg_spearman_corr, fu.avg_kendall_corr, fu.max_pearson_corr, fu.max_spearman_corr]
         param_grid['filter__threshold'] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9, 1.0]
 
@@ -261,7 +261,7 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
         elif wrapper_method == 'none':
             preprocpipe = Pipeline([('deduper', deduper), ('scaler', scalers[0]), ('vart', var_thresh), ('median imputer', SimpleImputer(strategy='median')), ('post_nan_imputer', fu.DataFrameImputer(fill_value=0)), ('filter', feature_filter)])
         else:
-            decollinearizer = deco.Decollinarizer(targ_threshold=0.1, feat_threshold=0.5, prune_method='pearson', num_features=5000, targ_method='anova_pinv', n_jobs=1, min_features=64, verbosity=1)
+            decollinearizer = deco.Decollinarizer(targ_threshold=0.1, feat_threshold=0.5, prune_method='pearson', num_features=5000, targ_method='avg_pearson', n_jobs=1, min_features=64, verbosity=1, label_type='regression')
             param_grid['deco__feat_threshold']= [0.3, 0.5, 0.7, 1.0, 1.001]
             param_grid['deco__targ_threshold']= [-.001, 0, 0.1, 0.2, 0.3, 0.9, 0.95, 0.99, 0.999]
             param_grid['deco__num_features']= [5000] 
@@ -666,24 +666,23 @@ if __name__ == '__main__':
     parser.add_argument('--n_jobs', type=int, default=1)
     
     # main params
-    parser.add_argument('--n_hyper_cv', type=int, default=2, help="The number of folds to use for the grid search")
-    parser.add_argument('--n_fs_cv', type=int, default=2, help="The number of folds to use for the inner cross validation")
-    parser.add_argument('--n_fs_repeats', type=int, default=3, help="The number of times to repeat the feature cv")
-    parser.add_argument('--n_hyper_repeats', type=int, default=3, help="The number of times to repeat the hyperparameter cv")
+    parser.add_argument('--n_hyper_cv', type=int, default=3, help="The number of folds to use for the grid search")
+    parser.add_argument('--n_fs_cv', type=int, default=3, help="The number of folds to use for the inner cross validation")
+    parser.add_argument('--n_fs_repeats', type=int, default=2, help="The number of times to repeat the feature cv")
+    parser.add_argument('--n_hyper_repeats', type=int, default=2, help="The number of times to repeat the hyperparameter cv")
     parser.add_argument('--search_method', type=str, default='bayes', help="The search method to use for the grid search")
     parser.add_argument('--n_iterations', type=int, default=100, help="The number of random iterations to use for the random search")
-    parser.add_argument('--n_points', type=int, default=1, help="The number of points to use for the bayesian search")
+    parser.add_argument('--n_points', type=int, default=2, help="The number of points to use for the bayesian search")
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
     parser.add_argument('--model_name', type=str, default='XGBRegressor', help="The ndame of the model to use")
     parser.add_argument('--outer_jobs', type=int, default=1, help="The number of jobs to use for the outer grid search")
     parser.add_argument('--inner_jobs', type=int, default=1, help="The number of jobs to use for the inner grid search")
     parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
-    parser.add_argument('--scoring', type=str, default='mcc', help="The scoring method to use for the grid search")
 
 
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg', 'ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     

@@ -84,7 +84,7 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
         os.makedirs(outbase, exist_ok=True)
         
     base_call = ("python3 mtbi_detection/modeling/train_baselearners.py --reference_method=CSD --n_jobs={n_jobs} "
-                 "--n_hyper_cv={n_hyper_cv} --n_fs_cv={n_fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_fs_repeats} "
+                 "--n_hyper_cv={n_hyper_cv} --n_fs_cv={n_fs_cv} --n_fs_repeats={n_fs_repeats} --n_hyper_repeats={n_hyper_repeats} "
                  "--model_name={model_name} --n_iterations={n_iterations} --n_points={n_points} --skip_ui --verbosity=2 "
                  "--results_savepath={results_savepath} --which_features {which_features0} {which_features1} {which_features2} "
                  "{out_appdx}")

@@ -496,12 +496,12 @@ def return_cv_train_test_preds(X, model, n_cv=None, base_model=True, verbose=Fal
         groups_test = groups[test_idx]
         assert len(set(groups_train).intersection(set(groups_test))) == 0, f"Overlap between train and test: {set(groups_train).intersection(set(groups_test))}"
         
-        # fits the model
-        try:
-            # set the clf n_jobs to 1 to avoid memory issues
-            clf.set_params(n_jobs=1)
-        except:
-            print(f"Could not set n_jobs for {clf_name}")
+        # # fits the model
+        # try:
+        #     # set the clf n_jobs to 1 to avoid memory issues
+        #     clf.set_params(n_jobs=1)
+        # except:
+        #     print(f"Could not set n_jobs for {clf_name}")
         clf.fit(X_train, y_train)
         testing_preds[test_idx, :] = clf.predict_proba(X_test)
         # assert len(train_idx) == X_proctr.shape[0]-1

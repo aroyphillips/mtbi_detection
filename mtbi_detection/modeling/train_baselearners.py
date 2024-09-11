@@ -175,7 +175,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
 
         param_grid['vart__threshold'] = [0.0, 0.01, 0.05, 0.1]
 
-        feature_filter = UnivariateThresholdSelector(sklearn.feature_selection.mutual_info_classif, threshold=0.05, discrete_features=False, min_features=100)
+        feature_filter = UnivariateThresholdSelector(sklearn.feature_selection.mutual_info_classif, threshold=0.05, min_features=100)
         param_grid['filter__score_func'] = [sklearn.feature_selection.mutual_info_classif, pearson_corr, spearman_corr, kendall_corr, anova_pinv]
         param_grid['filter__threshold'] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9, 1.0]
 
@@ -675,7 +675,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg', 'ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     

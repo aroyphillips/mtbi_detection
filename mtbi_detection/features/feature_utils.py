@@ -196,6 +196,27 @@ class DropNanRows(BaseEstimator, TransformerMixin):
 ### make a feature filter selector with arbitrary scoring function
 class UnivariateThresholdSelector(BaseEstimator, TransformerMixin):
     def __init__(self, score_func=None, threshold=None, verbose=0, min_features=1, scale_scores=False, scale_min=0, scale_max=1.0, **kwargs):
+        """
+        Initialize the UnivariateThresholdSelector
+        Parameters:
+        score_func: str or callable
+            If str, must be one of 'pearson_corr', 'spearman_corr', 'kendall_corr', 'anova_f', 'anova_pinv', 'mi_classif', 'mi_regression'
+            If callable, must be a function that takes X and y as arguments and returns an array of scores
+        threshold: float
+            Threshold for selecting features
+        verbose: int
+            Verbosity level
+        min_features: int
+            Minimum number of features to select
+        scale_scores: bool
+            Whether to scale the scores to be between scale_min and scale_max
+        scale_min: float
+            Minimum value for scaling the scores
+        scale_max: float
+            Maximum value for scaling the scores
+        kwargs: dict
+            Additional keyword arguments to make sure compatibility with sklearn
+        """
         if verbose>2:
             print(f"Initializing UnivariateThresholdSelector with score_func: {score_func}, threshold: {threshold}, verbose: {verbose}, min_features: {min_features}, scale_scores: {scale_scores}, scale_min: {scale_min}, scale_max: {scale_max}")
         if type(score_func) == str:

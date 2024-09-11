@@ -366,7 +366,7 @@ def split_unseen_preds(unseen_preds, internal_folder='data/internal/', default=T
         holdout_preds = unseen_preds.loc[[s for s in unseen_preds.index if s in rand_holdout_subjs]]
     return ival_preds, holdout_preds
 
-def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=1):
+def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=1):
     """
     Given a dictionary that contains the paths to:
         - dev_basepreds: path to the development set predictions 
@@ -386,7 +386,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
                 {'select_cols': selected_columns,
                 'ival_groups': ival_groups,
                 'holdout_groups': holdout_groups,
-                'holdout_labels': holdout_labels,
+                'holdout_symptoms': holdout_symptoms,
                 'holdout_results': output of test_regmodels_on_unseen_data,
                 }
             'perturbation_scores': dictionary with the perturbation scores for each model
@@ -431,7 +431,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
         }
 
     # tabularize the split results
-    score_types = split_results['split_0']['holdout_results']['rf']['scores'].keys()
+    score_types = split_results['rf']['scores'].keys()
     split_results_for_pandas = {score_type: [] for score_type in score_types}
     split_results_for_pandas['split'] = []
     split_results_for_pandas['metalearner'] = []
@@ -445,23 +445,19 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
     split_results_df = pd.DataFrame(split_results_for_pandas)
     
     # now aggregate the results
-    overall_labels = [label for split_idx in range(n_splits) for label in split_results[f'split_{split_idx}']['holdout_labels']]
+    overall_symptoms = [label for split_idx in range(n_splits) for label in split_results[f'split_{split_idx}']['holdout_symptoms']]
     overall_preds = {}
-    overall_pred_probas = {}
     for split_idx in range(n_splits):
         split_results = split_results[f'split_{split_idx}']['holdout_results']
         for model in split_results.keys():
             if model not in overall_preds.keys():
                 overall_preds[model] = []
-                overall_pred_probas[model] = []
             overall_preds[model].extend(split_results[model]['preds'])
-            overall_pred_probas[model].extend(split_results[model]['pred_probas'])
 
     perturbation_scores = {}
     for model in overall_preds.keys():
         overall_preds[model] = np.array(overall_preds[model])
-        overall_pred_probas[model] = np.array(overall_pred_probas[model])
-        perturbation_scores[model] = mu.compute_binary_scores(overall_labels, overall_preds[model], overall_pred_probas[model])
+        perturbation_scores[model] = mu.compute_select_multireg_scores(overall_symptoms, overall_preds[model], unseen_symptoms.columns)
 
     perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner][score] for score in score_types] for metalearner in metalearners}, index=score_types)
     all_split_results = {
@@ -1046,11 +1042,11 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### Repeat the process for n_splits
         print(f"Running the final metamodel on n_splits")
-        n_split_results, split_results_df, overall_perturbation_results_df = return_split_results(default_results_saved, n_splits, n_metatrain_cv)
+        n_split_results, split_results_df, overall_perturbation_results_df = return_split_regresults(default_results_saved, n_splits, n_metatrain_cv)
 
         ### Save the results
         print(f"Saving the perturbation split results")
-        split_results_saved = save_split_results(n_split_results, split_savepath, optional_savables={'perturbation_split_results_table': split_results_df, 'overall_perturbation_results': overall_perturbation_results_df})
+        split_results_saved = fmodel.save_split_results(n_split_results, split_savepath, optional_savables={'perturbation_split_results_table': split_results_df, 'overall_perturbation_results': overall_perturbation_results_df})
 
         all_results = {
             'default': default_split_results,
@@ -1059,8 +1055,8 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
     else: 
         print(f"Results already exist, reloading them")
-        default_split_results = load_split_results(default_savepath)['split_results']
-        n_split_results = load_split_results(split_savepath)['split_results']
+        default_split_results = fmodel.load_split_results(default_savepath)['split_results']
+        n_split_results = fmodel.load_split_results(split_savepath)['split_results']
         all_results = {
             'default': default_split_results,
             'n_splits': n_split_results,
