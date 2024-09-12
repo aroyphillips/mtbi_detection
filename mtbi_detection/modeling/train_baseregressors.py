@@ -183,13 +183,13 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
         param_grid['vart__threshold'] = [0.0, 0.01, 0.05, 0.1]
 
         feature_filter = UnivariateThresholdSelector(fu.avg_mi_reg, threshold=0.05, min_features=100)
-        param_grid['filter__score_func'] = [fu.avg_mi_reg, fu.avg_pearson_corr, fu.avg_spearman_corr, fu.avg_kendall_corr, fu.max_pearson_corr, fu.max_spearman_corr]
+        param_grid['filter__score_func'] = [fu.avg_mi_reg, fu.avg_pearson_corr, fu.avg_spearman_corr, fu.avg_kendall_corr, fu.max_pearson_corr, fu.max_spearman_corr, fu.max_kendall_corr]
         param_grid['filter__threshold'] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9, 1.0]
 
         # narrow the threshold for EEG features due to computational complexity
         if 'eeg' in which_features:
             param_grid['filter__threshold'] = [0.5, 0.9, 0.95, 0.99, 0.999, 1.0]
-            param_grid['filter__score_func'] = [pearson_corr, spearman_corr, kendall_corr, anova_pinv]
+            param_grid['filter__score_func'] =  [fu.avg_pearson_corr, fu.avg_spearman_corr, fu.max_pearson_corr, fu.max_spearman_corr, fu.avg_kendall_corr, fu.max_kendall_corr]
         eval_scoring = {'avg_pearson': make_scorer(fu.avg_pearson_pred), 
                         'avg_spearman': make_scorer(fu.avg_spearman_pred), 
                         'avg_rmse': make_scorer(fu.avg_rmse), 
@@ -305,7 +305,7 @@ def main(model_name='ElasticNet', which_features=['eeg'], wrapper_method='recurs
             new_param_grid[f'{eeg_prefix}deco__prune_method']= ['pearson', 'spearman']
                     
             new_param_grid[f'{eeg_prefix}filter__threshold'] = [0.7, 0.9, 0.95, 0.99, 0.999, 1.0]
-            new_param_grid[f'{eeg_prefix}filter__score_func'] =  [fu.avg_pearson_corr, fu.avg_spearman_corr, fu.max_pearson_corr, fu.max_spearman_corr]
+            new_param_grid[f'{eeg_prefix}filter__score_func'] =  [fu.avg_pearson_corr, fu.avg_spearman_corr, fu.avg_kendall_corr, fu.max_pearson_corr, fu.max_spearman_corr, fu.max_kendall_corr]
             new_param_grid[f'{eeg_prefix}filter__min_features'] = [100, 500, 1000]
             new_param_grid[f'{eeg_prefix}filter__scale_scores'] = [True]
             
@@ -666,13 +666,13 @@ if __name__ == '__main__':
     parser.add_argument('--n_jobs', type=int, default=1)
     
     # main params
-    parser.add_argument('--n_hyper_cv', type=int, default=3, help="The number of folds to use for the grid search")
-    parser.add_argument('--n_fs_cv', type=int, default=3, help="The number of folds to use for the inner cross validation")
-    parser.add_argument('--n_fs_repeats', type=int, default=2, help="The number of times to repeat the feature cv")
-    parser.add_argument('--n_hyper_repeats', type=int, default=2, help="The number of times to repeat the hyperparameter cv")
+    parser.add_argument('--n_hyper_cv', type=int, default=2, help="The number of folds to use for the grid search")
+    parser.add_argument('--n_fs_cv', type=int, default=2, help="The number of folds to use for the inner cross validation")
+    parser.add_argument('--n_fs_repeats', type=int, default=1, help="The number of times to repeat the feature cv")
+    parser.add_argument('--n_hyper_repeats', type=int, default=1, help="The number of times to repeat the hyperparameter cv")
     parser.add_argument('--search_method', type=str, default='bayes', help="The search method to use for the grid search")
     parser.add_argument('--n_iterations', type=int, default=100, help="The number of random iterations to use for the random search")
-    parser.add_argument('--n_points', type=int, default=2, help="The number of points to use for the bayesian search")
+    parser.add_argument('--n_points', type=int, default=1, help="The number of points to use for the bayesian search")
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
     parser.add_argument('--model_name', type=str, default='XGBRegressor', help="The ndame of the model to use")
     parser.add_argument('--outer_jobs', type=int, default=1, help="The number of jobs to use for the outer grid search")

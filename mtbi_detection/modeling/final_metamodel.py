@@ -288,7 +288,7 @@ def return_basemodel_preds(basemodel_results, n_basetrain_cv=None, verbose=False
                 assert np.array_equal(Xts.values, feature_data[fset]['Xts'].values, equal_nan=True), "Testing data does not match"
                 assert np.array_equal(X_hld.values, feature_data[fset]['X_hld'].values, equal_nan=True), "Holdout data does not match"
                 assert all([all(Xtr.index == feature_data[fset]['Xtr'].index), all(Xts.index == feature_data[fset]['Xts'].index), all(X_hld.index == feature_data[fset]['X_hld'].index)]), "Indices do not match"
-
+            model_counter += 1
     # assert all([all(all_dev_preds[which_featuresets[0]][model_names[0]].index == all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
     # assert all([all(all_unseen_preds[which_featuresets[0]][model_names[0]].index == all_unseen_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
     
@@ -375,7 +375,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
     unseen_basepreds = pd.read_csv(default_savepaths['unseen_basepreds'], index_col=0)
     unseen_labels = fu.get_y_from_df(unseen_basepreds)
     unseen_groups = unseen_basepreds.index.values
-    split_results = {}
+    all_split_results = {}
     holdout_cv = sklearn.model_selection.StratifiedShuffleSplit(n_splits=n_splits, test_size=0.5, random_state=42)
     for split_idx, (train_idx, test_idx) in enumerate(holdout_cv.split(unseen_basepreds, unseen_labels)):
         print(f"Running split {split_idx+1}/{n_splits}")
@@ -395,7 +395,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
         split_results, _ = test_models_on_unseen_data(fitted_split_metamodels, select_split_holdout_preds, metalearners=metalearners)
 
 
-        split_results[f'split_{split_idx}'] = {
+        all_split_results[f'split_{split_idx}'] = {
             'select_cols': select_split_dev_preds.columns,
             'ival_groups': ival_groups,
             'holdout_groups': holdout_groups,
@@ -405,7 +405,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
         }
 
     # tabularize the split results
-    score_types = split_results['split_0']['holdout_results']['rf']['scores'].keys()
+    score_types = all_split_results['split_0']['holdout_results']['rf']['scores'].keys()
     split_results_for_pandas = {score_type: [] for score_type in score_types}
     split_results_for_pandas['split'] = []
     split_results_for_pandas['metalearner'] = []
@@ -414,22 +414,22 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
             split_results_for_pandas['split'].append(f"split_{splitdx}")
             split_results_for_pandas['metalearner'].append(metalearner)
             for score in score_types:
-                split_results_for_pandas[score].append(split_results[f'split_{splitdx}']['holdout_results'][metalearner]['scores'][score])
+                split_results_for_pandas[score].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['scores'][score])
 
     split_results_df = pd.DataFrame(split_results_for_pandas)
     
     # now aggregate the results
-    overall_labels = [label for split_idx in range(n_splits) for label in split_results[f'split_{split_idx}']['holdout_labels']]
+    overall_labels = [label for split_idx in range(n_splits) for label in all_split_results[f'split_{split_idx}']['holdout_labels']]
     overall_preds = {}
     overall_pred_probas = {}
     for split_idx in range(n_splits):
-        split_results = split_results[f'split_{split_idx}']['holdout_results']
-        for model in split_results.keys():
+        subsplit_results = all_split_results[f'split_{split_idx}']['holdout_results']
+        for model in subsplit_results.keys():
             if model not in overall_preds.keys():
                 overall_preds[model] = []
                 overall_pred_probas[model] = []
-            overall_preds[model].extend(split_results[model]['preds'])
-            overall_pred_probas[model].extend(split_results[model]['pred_probas'])
+            overall_preds[model].extend(subsplit_results[model]['preds'])
+            overall_pred_probas[model].extend(subsplit_results[model]['pred_probas'])
 
     perturbation_scores = {}
     for model in overall_preds.keys():
@@ -439,7 +439,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
 
     perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner][score] for score in score_types] for metalearner in metalearners}, index=score_types)
     all_split_results = {
-        'split_results': split_results,
+        'split_results': all_split_results,
         'perturbation_scores': perturbation_scores
     }
     return all_split_results, split_results_df, perturbation_score_df
