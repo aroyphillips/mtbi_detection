@@ -222,7 +222,7 @@ def select_base_regressors(dev_pred_df=None, ival_pred_df=None, holdout_pred_df=
     ival_preds = {col: ival_pred_df[[c for c in ival_pred_df.columns if col in c]] for col in score_cols}
 
     # choose the best model based on the average rank rmse
-    best_models = {col: ival_preds[col].columns[np.argmin([fu.avg_rank_rmse(ival_y_test[col], ival_preds[col][c]) for c in ival_preds[col].columns])] for col in score_cols}
+    best_models = {col: ival_preds[col].columns[np.argmin([fu.avg_rank_rmse(ival_y_test[col], ival_preds[col]) for c in ival_preds[col].columns])] for col in score_cols}
 
     wilcoxon_signed_pvals = {col: validation_wilcoxon_signed(ival_preds[col], best_models[col]) for col in score_cols}
 
@@ -284,7 +284,8 @@ def return_baseregressor_preds(basemodel_results, n_basetrain_cv=None, verbose=F
     model_names = list(set().union(*basemodel_results.values())) # https://stackoverflow.com/questions/45652155/extract-all-keys-in-the-second-level-of-nested-dictionary/45652179#45652179
     
     model_counter = 1
-    symptom_scorenames = fu.get_reg_from_df(basemodel_results[which_featuresets[0]][model_names[0]]).columns
+    example_train_features = [os.path.join(basemodel_results[which_featuresets[0]][model_names[0]], f) for f in os.listdir(basemodel_results[which_featuresets[0]][model_names[0]]) if f.endswith('csv') and 'X_train' in f][0]
+    symptom_scorenames = fu.get_reg_from_df(pd.read_csv(example_train_features, index_col=0)).columns
     for fdx, fset in enumerate(which_featuresets):
         all_dev_preds[fset] = {}
         all_unseen_preds[fset] = {}
@@ -518,7 +519,7 @@ def return_cv_train_test_regressor_preds(X, model, n_cv=None, base_model=True, v
     for idx, (train_idx, test_idx) in enumerate(cv_splitter.split(X_proctr, y_true_bin, groups=groups)):
         print(f"Running base model split {idx+1}/{cv_splitter.get_n_splits(X_proctr, y_true_bin, groups=groups)}")
         X_train, X_test = X_proctr.iloc[train_idx], X_proctr.iloc[test_idx]
-        y_train = y_true[train_idx]
+        y_train = y_true.iloc[train_idx].values
         groups_train = groups[train_idx]
         groups_test = groups[test_idx]
         assert len(set(groups_train).intersection(set(groups_test))) == 0, f"Overlap between train and test: {set(groups_train).intersection(set(groups_test))}"
@@ -548,153 +549,6 @@ def return_cv_train_test_regressor_preds(X, model, n_cv=None, base_model=True, v
         print(f"Made my training and testing predictions for {clf_name} in {time.time()-st} seconds, shape: {training_preds.shape}, {testing_preds.shape}, split_col: {len(split_col)}")
         print(f"Computing CV predictions took {time.time()-st} seconds: ({cv_splitter.get_n_splits(X_proctr, y_true, groups=groups)} splits)")
     return training_preds, testing_preds
-  
-def get_ensemble_cv_res_preds(dev_test_pred_df, n_cv=None, scores=['matthews_corrcoef', 'roc_auc', 'balanced_accuracy', 'sensitivity', 'specificity'], metalearners=['rf', 'lr', 'xgb'], n_jobs=5, to_select_base_models=False, internal_folder='data/internal/'):
-    """
-    Evaluates my metalearners in somewhat nested CV fashion (the test preds are found first and then the metalearner is evaluated in nested cv manner)
-    Each test prediction had not been seen by the base model but there is surely some optimistic bias due to FS on whole dev set
-    """
-    split_dict = {'cv_results': {}}
-    logo= False
-    if n_cv is None or n_cv >= dev_test_pred_df.shape[0]:
-        cv = sklearn.model_selection.LeaveOneGroupOut()
-        logo = True
-        n_cv = cv.get_n_splits(dev_test_pred_df, fu.get_y_from_df(dev_test_pred_df), groups=dev_test_pred_df.index)
-    else:
-        cv = sklearn.model_selection.StratifiedKFold(n_splits=n_cv, shuffle=True, random_state=42)
-        n_cv = cv.get_n_splits(dev_test_pred_df, fu.get_y_from_df(dev_test_pred_df))
-
-    meta_preds = {metalearner: np.ones((dev_test_pred_df.shape[0], 2))*-1 for metalearner in metalearners}
-    meta_y = np.ones(dev_test_pred_df.shape[0])
-    meta_groups = np.ones(dev_test_pred_df.shape[0])
-
-    # mdx_start = {key: idx*2 for idx, key in enumerate(metalearners)}
-    for splitdx, (train_idx, test_idx) in enumerate(cv.split(dev_test_pred_df, fu.get_y_from_df(dev_test_pred_df), groups=dev_test_pred_df.index)):
-        print(f"Running split {splitdx+1}/{n_cv}")
-        rf = sklearn.ensemble.RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=1)
-        lr = sklearn.linear_model.LogisticRegression(random_state=42, solver='saga', penalty='elasticnet', l1_ratio=0.5, n_jobs=1, max_iter=1000)
-        xgb = xgboost.XGBClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=1)
-        lr_grid = {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000],
-                    'l1_ratio': [0, 0.25, 0.5, 0.75, 1]}
-        rf_grid = {'max_depth': [2, 3, 5, 7, 11, None], 'min_samples_leaf':[1,2,4,8], 'max_leaf_nodes': [2, 3, 5, 11, 13, 17, 24, 32, 64, None]}
-        xgb_grid = {
-            'n_estimators': [500],
-            'learning_rate': [0.03, 0.3], 
-            'colsample_bytree': [0.7, 0.8, 0.9],
-            'max_depth': [2, 5, 7, 15],
-            'reg_alpha': [0, 1, 1.5],
-            'reg_lambda': [0, 1, 1.5],
-            'subsample': [0.7, 0.8, 0.9]
-        }
-        metalearner_rf  = sklearn.model_selection.GridSearchCV(rf, rf_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=42))
-        metalearner_lr  = sklearn.model_selection.GridSearchCV(lr, lr_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=42))
-        metalearner_xgb = sklearn.model_selection.GridSearchCV(xgb, xgb_grid, scoring='matthews_corrcoef', n_jobs=n_jobs, cv=sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=42))
-
-
-        train_pred_df = dev_test_pred_df.iloc[train_idx]
-        test_pred_df = dev_test_pred_df.iloc[test_idx]
-        if to_select_base_models:
-            test_pred_df, train_pred_df, _, _, _ = select_base_regressors(test_pred_df, train_pred_df, internal_folder=internal_folder)
-        y_train = fu.get_y_from_df(train_pred_df)
-        y_test = fu.get_y_from_df(test_pred_df)
-        groups_train = train_pred_df.index
-        groups_test = test_pred_df.index
-        meta_groups[test_idx] = groups_test
-        meta_y[test_idx] = y_test
-        assert len(set(train_pred_df.index).intersection(set(test_pred_df.index))) == 0, f"Overlap between train and test: {set(train_pred_df.index).intersection(set(test_pred_df.index))}"
-
-        split_dict['cv_results'][f'split{splitdx}'] = {}
-        split_dict['cv_results'][f'split{splitdx}']['test_groups'] = test_pred_df.index
-        if 'rf' in metalearners:
-            print(f"Training RandomForest metalearner on split {splitdx+1}/{n_cv}", end='\r')
-            rfst= time.time()
-            metalearner_rf.fit(train_pred_df, y_train, groups=groups_train)
-            best_scores_rf = [metalearner_rf.cv_results_[f'split{k}_test_score'][metalearner_rf.best_index_] for k in range(5)]
-            metalearner_rf_pred = metalearner_rf.predict_proba(test_pred_df)
-            split_dict['cv_results'][f'split{splitdx}']['best_scores_rf'] = best_scores_rf
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_rf_pred'] = metalearner_rf_pred
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_rf'] = metalearner_rf
-            meta_preds['rf'][test_idx,:] = metalearner_rf_pred
-            print(f"Training RandomForest metalearner on split {splitdx+1}/{n_cv} took {time.time()-rfst} seconds")
-
-        if 'lr' in metalearners:
-            print(f"Training LogisticRegression metalearner on split {splitdx+1}/{n_cv}", end='\r')
-            lrst = time.time()
-            metalearner_lr.fit(train_pred_df, y_train, groups=groups_train)
-            best_scores_lr = [metalearner_lr.cv_results_[f'split{k}_test_score'][metalearner_lr.best_index_] for k in range(5)]
-            metalearner_lr_pred = metalearner_lr.predict_proba(test_pred_df)
-            split_dict['cv_results'][f'split{splitdx}']['best_scores_lr'] = best_scores_lr
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_lr_pred'] = metalearner_lr_pred
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_lr'] = metalearner_lr
-            meta_preds['lr'][test_idx,:] = metalearner_lr_pred
-            print(f"Training LogisticRegression metalearner on split {splitdx+1}/{n_cv} took {time.time()-lrst} seconds")
-        if 'xgb' in metalearners:
-            print(f"Training XGBoost metalearner on split {splitdx+1}/{n_cv}", end='\r')
-            xgbst = time.time()
-            metalearner_xgb.fit(train_pred_df, y_train, groups=groups_train)
-            best_scores_xgb = [metalearner_xgb.cv_results_[f'split{k}_test_score'][metalearner_xgb.best_index_] for k in range(5)]
-            metalearner_xgb_pred = metalearner_xgb.predict_proba(test_pred_df)
-            split_dict['cv_results'][f'split{splitdx}']['best_scores_xgb'] = best_scores_xgb
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_xgb_pred'] = metalearner_xgb_pred
-            split_dict['cv_results'][f'split{splitdx}']['metalearner_xgb'] = metalearner_xgb
-            meta_preds['xgb'][test_idx,:] = metalearner_xgb_pred
-            print(f"Training XGBoost metalearner on split {splitdx+1}/{n_cv} took {time.time()-xgbst} seconds")
-        if not logo:
-            for metalearner in metalearners:
-                if metalearner == 'rf':
-                    mdl_pred = np.argmax(metalearner_rf_pred, axis=1)
-                    mdl_pred_proba = metalearner_rf_pred
-                elif metalearner == 'lr':
-                    mdl_pred = np.argmax(metalearner_lr_pred, axis=1)
-                    mdl_pred_proba = metalearner_lr_pred
-                elif metalearner == 'xgb':
-                    mdl_pred = np.argmax(metalearner_xgb_pred, axis=1)
-                    mdl_pred_proba = metalearner_xgb_pred
-                else:
-                    raise(ValueError(f"Metalearner {metalearner} not implemented"))
-                for score in scores:
-                    if score == 'specificity':
-                        metric_score = sklearn.metrics.recall_score(y_test, mdl_pred, pos_label=0)
-                    elif score == 'sensitivity':
-                        metric_score = sklearn.metrics.recall_score(y_test, mdl_pred, pos_label=1)
-                    elif score == 'balanced_accuracy':
-                        metric_score = sklearn.metrics.balanced_accuracy_score(y_test, mdl_pred)
-                    elif score == 'roc_auc':
-                        metric_score = sklearn.metrics.roc_auc_score(y_test, mdl_pred_proba[:,1])
-                    elif score == 'matthews_corrcoef':
-                        metric_score = sklearn.metrics.matthews_corrcoef(y_test, mdl_pred)
-                    else:
-                        raise ValueError(f"Score {score} not implemented")
-                        # scorer = sklearn.metrics.get_scorer(score)
-                        # metric_score = scorer(y_test, mdl_pred) # won't work since scorer takes clf, X, y
-                    split_dict['cv_results'][f'split{splitdx}'][f'test_scores_{metalearner}_{score}'] = metric_score
-        time.sleep(0)
-
-    for score in scores:
-        for medx, metalearner in enumerate(metalearners):
-            meta_pred_proba = meta_preds[metalearner]
-            meta_bin_pred = np.argmax(meta_pred_proba, axis=1)
-            if score == 'specificity':
-                metric_score = sklearn.metrics.recall_score(meta_y, meta_bin_pred, pos_label=0)
-            elif score == 'sensitivity':
-                metric_score = sklearn.metrics.recall_score(meta_y, meta_bin_pred, pos_label=1)
-            elif score == 'balanced_accuracy':
-                metric_score = sklearn.metrics.balanced_accuracy_score(meta_y, meta_bin_pred)
-            elif score == 'roc_auc':
-                metric_score = sklearn.metrics.roc_auc_score(meta_y, meta_pred_proba[:,1])
-            elif score == 'matthews_corrcoef':
-                metric_score = sklearn.metrics.matthews_corrcoef(meta_y, meta_bin_pred)
-            else:
-                raise ValueError(f"Score {score} not implemented")
-            split_dict['cv_results'][f'ovallall_meta_test_scores_{metalearner}_{score}'] = metric_score
-            if not logo:
-                split_dict['cv_results'][f'mean_meta_test_scores_{metalearner}_{score}'] = np.mean([split_dict['cv_results'][f'split{k}'][f'test_scores_{metalearner}_{score}'] for k in range(n_cv)])
-                split_dict['cv_results'][f'std_meta_test_scores_{metalearner}_{score}'] = np.std([split_dict['cv_results'][f'split{k}'][f'test_scores_{metalearner}_{score}'] for k in range(n_cv)])
-
-    split_dict['cv_results']['meta_groups'] = meta_groups
-    split_dict['cv_results']['meta_y'] = meta_y
-    split_dict['cv_results']['meta_pred_probas'] = meta_preds
-    return split_dict
 
 def get_avg_model_best_estimators(loaded_model_data, clf_names=None):
     if clf_names is None:
@@ -1053,14 +907,20 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
             'n_splits': n_split_results,
         }
 
-    else: 
+    else:
         print(f"Results already exist, reloading them")
-        default_split_results = fmodel.load_split_results(default_savepath)['split_results']
-        n_split_results = fmodel.load_split_results(split_savepath)['split_results']
+        default_splits_paths = fmodel.load_split_results(default_savepath)
+        n_splits_paths =  fmodel.load_split_results(split_savepath)
+        default_split_results = json.load(open(default_splits_paths['results_dict'], 'r'))
+        n_split_results = json.load(open(n_splits_paths['results_dict'], 'r'))
         all_results = {
             'default': default_split_results,
             'n_splits': n_split_results,
+            'default_results_table': pd.read_csv(default_splits_paths['results_table']),
+            'overall_perturbation_results_table': pd.read_csv(n_splits_paths['overall_perturbation_results']),
+            'perturbation_split_results_table': pd.read_csv(n_splits_paths['perturbation_split_results_table'])
         }
+
 
     print(f"Finished running the final metamodel")
 
@@ -1084,7 +944,7 @@ def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV S
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the final ensemble model')
     parser.add_argument('--delay', type=int, default=0, help='Delay in seconds before running the script')
-    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg', 'ecg'], help='Which featuresets to use')
+    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg'], help='Which featuresets to use')
     parser.add_argument('--savepath', type=str, default=BASEREGRESSORS_SAVEPATH, help='Path to the baseregressors')
     parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=False)
     parser.add_argument('--internal_folder', type=str, default='data/internal/', help='Path to the internal folder')

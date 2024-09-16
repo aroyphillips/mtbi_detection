@@ -1037,15 +1037,23 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         all_results = {
             'default': default_split_results,
             'n_splits': n_split_results,
+            'default_results_table': default_results_table,
+            'overall_perturbation_results_table': overall_perturbation_results_df,
+            'perturbation_split_results_table': split_results_df
         }
 
     else: 
         print(f"Results already exist, reloading them")
-        default_split_results = load_split_results(default_savepath)['split_results']
-        n_split_results = load_split_results(split_savepath)['split_results']
+        default_splits_paths = load_split_results(default_savepath)
+        n_splits_paths = load_split_results(split_savepath)
+        default_split_results = json.load(open(default_splits_paths['results_dict'], 'r'))
+        n_split_results = json.load(open(n_splits_paths['results_dict'], 'r'))
         all_results = {
             'default': default_split_results,
             'n_splits': n_split_results,
+            'default_results_table': pd.read_csv(default_splits_paths['results_table']),
+            'overall_perturbation_results_table': pd.read_csv(n_splits_paths['overall_perturbation_results']),
+            'perturbation_split_results_table': pd.read_csv(n_splits_paths['perturbation_split_results_table'])
         }
 
     print(f"Finished running the final metamodel")
@@ -1079,6 +1087,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run the metamodel gridsearch')
     parser.add_argument('--n_basetrain_cv', type=int, default=None, help='Number of splits to use for training the baselearners')
     parser.add_argument('--n_metatrain_cv', type=int, default=5, help='Number of splits for the ensemble')
+    parser.add_argument('--reload_results', action=argparse.BooleanOptionalAction, help='Whether to reload the results if they already exist', default=False)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, help='Whether to print out the progress of the function', default=True)
     args = parser.parse_args()
 
