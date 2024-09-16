@@ -437,7 +437,7 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
         overall_pred_probas[model] = np.array(overall_pred_probas[model])
         perturbation_scores[model] = mu.compute_select_binary_scores(overall_labels, overall_preds[model], overall_pred_probas[model])
 
-    perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner][score] for score in score_types] for metalearner in metalearners}, index=score_types)
+    perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner]['scores'][score] for score in score_types] for metalearner in metalearners}, index=score_types)
     all_split_results = {
         'split_results': all_split_results,
         'perturbation_scores': perturbation_scores
@@ -886,7 +886,7 @@ def test_models_on_unseen_data(metalearner_dict, test_pred_df, metalearners=['rf
             e.g. {'rf': {'scores': {'MCC': mcc, 'ROC AUC': roc_auc, 'Balanced Accuracy': balanced_accuracy, 'Sensitivity': sensitivity, 'Specificity': specificity}, 
                         'roc_curve': {'fpr': fpr, 'tpr': tpr, 'thresh': thresh},
                         'preds': metalearner_pred,
-                        'pred_probs': metalearner_pred_proba},
+                        'pred_probas': metalearner_pred_proba},
                         
         - score_df: DataFrame containing the scores of the metalearners on the unseen data
             - rows: ['MCC', 'ROC AUC', 'Balanced Accuracy', 'Sensitivity', 'Specificity']
@@ -923,10 +923,10 @@ def test_models_on_unseen_data(metalearner_dict, test_pred_df, metalearners=['rf
         # unseen_score_pred_dict[metalearner] = {'scores': {'MCC': mcc, 'ROC AUC': roc_auc, 'Balanced Accuracy': balanced_accuracy, 'Sensitivity': sensitivity, 'Specificity': specificity},
         #                                     'roc_curve': {'fpr': fpr, 'tpr': tpr, 'thresh': thresh},
         #                                     'preds': metalearner_pred,
-        #                                     'pred_probs': metalearner_pred_proba}   
+        #                                     'pred_probas': metalearner_pred_proba}   
         unseen_score_pred_dict[metalearner] = mu.compute_select_binary_scores(y_test, metalearner_pred, metalearner_pred_proba)
         unseen_score_pred_dict[metalearner]['preds'] = metalearner_pred
-        unseen_score_pred_dict[metalearner]['pred_probs'] = metalearner_pred_proba
+        unseen_score_pred_dict[metalearner]['pred_probas'] = metalearner_pred_proba
         
     score_names = ['MCC', 'ROC AUC', 'Balanced Accuracy', 'Sensitivity', 'Specificity']
     score_df = pd.DataFrame({metalearner: [unseen_score_pred_dict[metalearner]['scores'][score] for score in score_names] for metalearner in metalearners}, index=score_names)
