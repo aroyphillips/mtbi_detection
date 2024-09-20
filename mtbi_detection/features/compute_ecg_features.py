@@ -1,7 +1,11 @@
 import pandas as pd
 import os
+import dotenv
 import mtbi_detection.features.feature_utils as fu
-ECG_FEATURE_PATH = '/scratch/ap60/mtbi_detection/ecg_features/'
+
+dotenv.load_dotenv()
+ECG_FEATURE_PATH = os.getenv('ECG_FEATURE_PATH')
+# ECG_FEATURE_PATH = '/scratch/ap60/mtbi_detection/ecg_features/'
 
 def load_ecg_features(ecgfeaturepath=ECG_FEATURE_PATH, choose_subjs='train', internal_folder='data/internal/'):
     """

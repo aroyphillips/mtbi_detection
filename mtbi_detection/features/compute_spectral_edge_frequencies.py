@@ -3,14 +3,17 @@ import pandas as pd
 import time
 import os
 import json
+import dotenv
 import mtbi_detection.features.gradiompy_integrate as gp_integrate
 import mtbi_detection.data.transform_data as td
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.data.data_utils as du
 
+dotenv.load_dotenv()
 
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz', 'T3','T4','T5','T6']
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 

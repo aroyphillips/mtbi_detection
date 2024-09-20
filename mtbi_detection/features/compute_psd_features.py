@@ -4,13 +4,16 @@ import numpy as np
 import pandas as pd
 import os
 import json
+import dotenv
 import scipy.stats as stats
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.transform_data as td
 import mtbi_detection.features.feature_utils as fu
 
 CHANNELS = ['C3','C4','Cz','F3','F4','F7','F8','Fp1','Fp2','Fz','O1','O2','P3','P4','Pz','T3','T4','T5','T6']
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
@@ -33,6 +36,8 @@ def compute_psd_features(transform_data_dict, choose_subjs=None, ratio=False, ch
     all_bin_methods = ['avg', 'sum', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90', 'p95', 'iqr']
     if bin_methods == 'all' or 'all' in bin_methods:
         bin_methods = ['avg', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90', 'p95', 'iqr']
+    if bin_methods == 'select' or 'select' in bin_methods:
+        bin_methods = ['avg', 'p5', 'p25', 'p75', 'p95', 'skew', 'std']
     elif type(bin_methods) == str:
         bin_methods = [bin_methods]
     assert all([method in all_bin_methods or (method[0]=='p' and method[1:].isdigit()) for method in bin_methods])

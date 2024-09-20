@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import os
 import json
+import dotenv
 
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.load_dataset as ld
@@ -22,9 +23,13 @@ import mtbi_detection.features.compute_parameterized_spectral_features as cpsf
 # import src.models.estimate_probabilities_from_symptoms as epfs
 
 
+dotenv.load_dotenv()
+
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 
@@ -406,7 +411,7 @@ if __name__ == '__main__':
 
     ## psd params
     parser.add_argument('--band_method', type=str, default='custom', help="Possible options: 'standard', 'log-standard', 'custom', 'linear_50', 'linear_100', 'linear_250'")
-    parser.add_argument('--bin_methods', type=str, nargs='+', default=['all'], help="evaluated multiple bin_methods: ['avg', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p10', 'p25', 'p75', 'p90', 'p95', 'iqr']")
+    parser.add_argument('--bin_methods', type=str, nargs='+', default=['select'], help="evaluated multiple bin_methods: ['avg', 'p5', 'p25', 'p75', 'p95', 'skew', 'std'] out of possible ['avg', 'median', 'max', 'min', 'std', 'var', 'skew', 'p5', 'p10', 'p25', 'p75', 'p90', 'p95', 'iqr']")
 
     ## regional psd params
     parser.add_argument('--regional_band_method', type=str, default='standard', help="Possible options: 'standard', 'anton', 'buzsaki', 'linear_50', 'linear_100', 'linear_250'")

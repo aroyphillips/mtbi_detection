@@ -4,12 +4,15 @@ import os
 import time
 import argparse
 import json
+import dotenv
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.features.compute_complexity_features as ccf
 import mtbi_detection.data.transform_data as td
 import mtbi_detection.features.feature_utils as fu
 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 def get_features_from_stack(feature_func, stacked_data, feature_metrics, subjs, channels, verbosity=1):

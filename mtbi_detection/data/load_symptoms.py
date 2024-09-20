@@ -4,13 +4,16 @@ import pandas as pd
 import numpy as np
 import os
 import glob
+import dotenv
 
 import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.features.feature_utils as fu
 
- 
-DOWNLOADPATH = open('download_path.txt', 'r').read().strip() # run after running extract_data.py or replace with location of the downloaded FITBIR data
+dotenv.load_dotenv()
+DOWNLOADPATH = os.getenv('DOWNLOAD_PATH')
+# DOWNLOADPATH = open('download_path.txt', 'r').read().strip() # run after running extract_data.py or replace with location of the downloaded FITBIR data
+
 
 def load_symptoms(choose_subjs='train', verbose=False, symptoms_only=True, with_nans=False, internal_folder='data/internal/'):
     """

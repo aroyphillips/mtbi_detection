@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import time
 from numpy.typing import NDArray
+import dotenv
 
 import antropy as ant
 import hurst
@@ -14,7 +15,9 @@ import mtbi_detection.data.data_utils as du
 import mtbi_detection.features.feature_utils as fu
 
 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 
 ### Feature Extraction code

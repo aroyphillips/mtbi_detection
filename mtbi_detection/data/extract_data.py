@@ -9,6 +9,7 @@ import glob
 import warnings
 import json
 import argparse
+import dotenv
 
 def main(dlpath='/home/ap60/Downloads/fitbir_downloads/fitbir_mission_connect_downloads/', savepath='/scratch/ap60/mtbi_detection/data/raw_mne_files/'):
     """
@@ -103,11 +104,13 @@ def main(dlpath='/home/ap60/Downloads/fitbir_downloads/fitbir_mission_connect_do
     with open(savepath+'preprocess_save_times.json', 'w') as fp:
         json.dump(savetimes, fp)
 
-    # save the savepath to extracted_path.txt
-    with open('extracted_path.txt', 'w') as f:
-        f.write(savepath)
-    with open('download_path.txt', 'w') as f:
-        f.write(dlpath)
+    # save the savepath to the dot env file
+    dotenv.set_key(dotenv.find_dotenv(), 'DOWNLOAD_PATH', dlpath)
+    dotenv.set_key(dotenv.find_dotenv(), 'EXTRACTED_PATH', savepath)
+    # with open('extracted_path.txt', 'w') as f:
+    #     f.write(savepath)
+    # with open('download_path.txt', 'w') as f:
+    #     f.write(dlpath)
 
     return data_df
 

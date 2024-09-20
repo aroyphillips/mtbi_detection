@@ -42,12 +42,14 @@ import argparse
 import fooof
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike
-
+import dotenv
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.transform_data as td
 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']

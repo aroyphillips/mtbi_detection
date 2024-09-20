@@ -10,16 +10,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import argparse
 import sklearn
-
+import dotenv
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.modeling.model_utils as mu
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.load_dataset as ld
 
 
+dotenv.load_dotenv()
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
 BASELEARNERS_SAVEPATH = os.path.join(RESULTS_SAVEPATH, 'baselearners')
@@ -178,7 +182,9 @@ def select_base_models(dev_pred_df=None, ival_pred_df=None, holdout_pred_df=None
 
     # choose the best model based on the internal validation set
     ival_y_test = fu.get_y_from_df(ival_pred_df)
-    all_model_mccs_ival = [sklearn.metrics.matthews_corrcoef(ival_y_test, ival_pos_pred_df[col]) for col in ival_pos_pred_df.columns]
+    # print(f"Unique values in ival_y_test: {np.unique(ival_y_test)}")
+    # print(f"Unique values in ival_pos_pred_df: {np.unique(ival_pos_pred_df)}")
+    all_model_mccs_ival = [sklearn.metrics.matthews_corrcoef(ival_y_test, ival_pos_pred_df[col].astype(int)) for col in ival_pos_pred_df.columns]
 
     assert ival_pos_pred_df.shape[1] == dev_pos_pred_df.shape[1]
     best_model_idx = np.argmax(all_model_mccs_ival)
@@ -273,9 +279,9 @@ def return_basemodel_preds(basemodel_results, n_basetrain_cv=None, verbose=False
             Xunseen = pd.concat([Xts, X_hld], axis=0)
             assert len(set(Xtr.index).intersection(set(Xunseen.index))) == 0, f"Overlap between train and unseen: {set(Xtr.index).intersection(set(Xunseen.index))}"
             _, dev_cv_preds = return_cv_train_test_preds(Xtr, model, n_cv=n_basetrain_cv, verbose=verbose)
-            dev_cv_preds.columns = [f"{model_name}_{idx}" for idx in range(2)]
+            dev_cv_preds.columns = [f"{fset}_{model_name}_{idx}" for idx in range(2)]
             yunseen = model.predict_proba(Xunseen)
-            yunseen = pd.DataFrame(yunseen, columns=[f"{model_name}_{idx}" for idx in range(2)], index=Xunseen.index)
+            yunseen = pd.DataFrame(yunseen, columns=[f"{fset}_{model_name}_{idx}" for idx in range(2)], index=Xunseen.index)
 
             all_dev_preds[fset][model_name] = dev_cv_preds
             all_unseen_preds[fset][model_name] = yunseen
@@ -284,9 +290,9 @@ def return_basemodel_preds(basemodel_results, n_basetrain_cv=None, verbose=False
                 feature_data[fset] = {'Xtr': Xtr, 'Xts': Xts, 'X_hld': X_hld}
             else:
                 # make sure the training data is the same
-                assert np.array_equal(Xtr.values, feature_data[fset]['Xtr'].values, equal_nan=True), "Training data does not match"
-                assert np.array_equal(Xts.values, feature_data[fset]['Xts'].values, equal_nan=True), "Testing data does not match"
-                assert np.array_equal(X_hld.values, feature_data[fset]['X_hld'].values, equal_nan=True), "Holdout data does not match"
+                assert np.array_equal(Xtr.values.astype(float), feature_data[fset]['Xtr'].values.astype(float), equal_nan=True), "Training data does not match"
+                assert np.array_equal(Xts.values.astype(float), feature_data[fset]['Xts'].values.astype(float), equal_nan=True), "Testing data does not match"
+                assert np.array_equal(X_hld.values.astype(float), feature_data[fset]['X_hld'].values.astype(float), equal_nan=True), "Holdout data does not match"
                 assert all([all(Xtr.index == feature_data[fset]['Xtr'].index), all(Xts.index == feature_data[fset]['Xts'].index), all(X_hld.index == feature_data[fset]['X_hld'].index)]), "Indices do not match"
             model_counter += 1
     # assert all([all(all_dev_preds[which_featuresets[0]][model_names[0]].index == all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
@@ -1056,8 +1062,10 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
             'perturbation_split_results_table': pd.read_csv(n_splits_paths['perturbation_split_results_table'])
         }
 
-    print(f"Finished running the final metamodel")
-
+    print(f"Finished running the final metamodel\n Default results:")
+    print(all_results['default_results_table'].to_latex())
+    print(f"Overall perturbation results:")
+    print(all_results['overall_perturbation_results_table'].to_latex())
     return all_results
 
 def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV Scores for Each Classifier"):
@@ -1078,9 +1086,9 @@ def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV S
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the final ensemble model')
     parser.add_argument('--delay', type=int, default=0, help='Delay in seconds before running the script')
-    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg', 'ecg'], help='Which featuresets to use')
+    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['symptoms'], help='Which featuresets to use')
     parser.add_argument('--savepath', type=str, default=BASELEARNERS_SAVEPATH, help='Path to the baselearners')
-    parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=False)
+    parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=True)
     parser.add_argument('--internal_folder', type=str, default='data/internal/', help='Path to the internal folder')
     parser.add_argument('--n_splits', type=int, default=10, help='Number of splits for the ensemble')
     parser.add_argument('--metalearners', type=str, nargs='+', default=['rf', 'lr', 'xgb'], help='Metalearners to use')

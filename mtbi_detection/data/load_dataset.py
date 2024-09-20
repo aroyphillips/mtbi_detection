@@ -6,11 +6,16 @@ import pandas as pd
 import numpy as np
 import platform
 import os
+import dotenv
 
 import mtbi_detection.data.extract_data as ed
 
-DLPATH = open('download_path.txt', 'r').read().strip()
-DATAPATH = open('extracted_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+DLPATH = os.getenv('DOWNLOAD_PATH')
+DATAPATH = os.getenv('EXTRACTED_PATH')
+
+# DLPATH = open('download_path.txt', 'r').read().strip()
+# DATAPATH = open('extracted_path.txt', 'r').read().strip()
 
 def find_raw_files(datapath, timepoint='baseline'):
     """

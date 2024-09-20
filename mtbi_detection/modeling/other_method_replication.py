@@ -13,15 +13,18 @@ import mne
 import mne_connectivity
 import os
 import pickle
-
+import dotenv
 import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.data.load_symptoms as ls
 import mtbi_detection.modeling.model_utils as mu
 
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'features')
 TDPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'psd_transform')
 OTHERRESULTS_SAVEPATH = os.path.join(os.path.dirname(LOCD_DATAPATH[:-1]), 'results', 'other_methods')

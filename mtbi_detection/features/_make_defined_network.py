@@ -7,8 +7,6 @@ import scipy
 import time
 import mne_connectivity
 
-
-
 def get_network(eeg_data, subjs, times, channels, bands={'Theta': (4, 8)}, fs=500, method='coherence', **kwargs):
     """
     Given the eeg_data, subjs, and times, this function will return the "method" network in the form of the adjacency matrix

@@ -1,8 +1,12 @@
 import shutil
 import os
 import argparse
+from dotenv import load_dotenv
 
-DATAPATH = open('extracted_path.txt', 'r').read().strip()
+
+# DATAPATH = open('extracted_path.txt', 'r').read().strip()
+load_dotenv()
+DATAPATH = os.getenv('EXTRACTED_PATH')
 def cleanpath(path, foldername='params', skip_ui=False):
     """
     given a path that contains directories of the name foldername{0,1,2,...}

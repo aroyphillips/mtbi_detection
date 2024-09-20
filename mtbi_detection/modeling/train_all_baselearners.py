@@ -8,6 +8,7 @@ import time
 import subprocess
 import numpy as np
 import itertools
+import dotenv
 from inputimeout import inputimeout, TimeoutOccurred
 
 DATASETS_NAME_DICT = {
@@ -27,9 +28,10 @@ MODEL_NAME_DICT = {
 }
 
 
-
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
 OUTBASE = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'outfiles', 'baselearners')

@@ -13,17 +13,20 @@ import argparse
 import sklearn
 import scipy
 from sklearn.metrics import make_scorer
-
+import dotenv
 import mtbi_detection.features.feature_utils as fu
 import mtbi_detection.modeling.model_utils as mu
 import mtbi_detection.data.data_utils as du
 import mtbi_detection.data.load_dataset as ld
 import mtbi_detection.modeling.final_metamodel as fmodel
 
-
+dotenv.load_dotenv()
 CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz', 'T3', 'T4', 'T5', 'T6']
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 FEATUREPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'features')
 RESULTS_SAVEPATH = os.path.join(os.path.dirname(os.path.dirname(LOCD_DATAPATH[:-1])), 'results')
 BASEREGRESSORS_SAVEPATH = os.path.join(RESULTS_SAVEPATH, 'baseregressors')
@@ -222,15 +225,18 @@ def select_base_regressors(dev_pred_df=None, ival_pred_df=None, holdout_pred_df=
     ival_preds = {col: ival_pred_df[[c for c in ival_pred_df.columns if col in c]] for col in score_cols}
 
     # choose the best model based on the average rank rmse
-    best_models = {col: ival_preds[col].columns[np.argmin([fu.avg_rank_rmse(ival_y_test[col], ival_preds[col]) for c in ival_preds[col].columns])] for col in score_cols}
+    print(f"ival_y_test: {ival_y_test.shape}, ival_preds: {ival_preds.keys()}")
+    # print(f"[ival_y_test[col].shape for col in score_cols]: {[ival_y_test[col].shape for col in score_cols]}")
+    # print(f"[[ival_preds[col][c].shape for c in ival_preds[col].columns] for col in score_cols]: {[[ival_preds[col][c].shape for c in ival_preds[col].columns] for col in score_cols]}")
+    best_models = {col: ival_preds[col].columns[np.argmin([fu.avg_rank_rmse(ival_y_test[col], ival_preds[col][c]) for c in ival_preds[col].columns])] for col in score_cols}
 
-    wilcoxon_signed_pvals = {col: validation_wilcoxon_signed(ival_preds[col], best_models[col]) for col in score_cols}
+    wilcoxon_signed_pvals = {score: validation_wilcoxon_signed(ival_preds[score], best_models[score]) for score in score_cols}
 
     # select all models that are above 0.05 likelihood
-    selected_cols = [col[:-2] for col, pval in wilcoxon_signed_pvals.items() if pval > 0.05]
-    dev_select_pred_df = dev_pred_df[[col for col in dev_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
-    ival_select_pred_df = ival_pred_df[[col for col in ival_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
-    holdout_select_pred_df = holdout_pred_df[[col for col in holdout_pred_df.columns if any([col.startswith(s) for s in selected_cols])]]
+    selected_models = [mdl for score in score_cols for mdl, pval in zip(ival_preds[score].columns, wilcoxon_signed_pvals[score])  if pval > 0.05 ]
+    dev_select_pred_df = dev_pred_df[[col for col in dev_pred_df.columns if any([col.startswith(s) for s in selected_models])]]
+    ival_select_pred_df = ival_pred_df[[col for col in ival_pred_df.columns if any([col.startswith(s) for s in selected_models])]]
+    holdout_select_pred_df = holdout_pred_df[[col for col in holdout_pred_df.columns if any([col.startswith(s) for s in selected_models])]]
     
     # assert no overlap
     assert len(set(dev_select_pred_df.index).intersection(set(ival_select_pred_df.index))) == 0, f"{set(dev_select_pred_df.index).intersection(set(ival_select_pred_df.index))} overlap between dev and ival"
@@ -253,6 +259,10 @@ def validation_wilcoxon_signed(pred_df, best_model_column):
     p_vals = []
     for col in pred_df.columns:
         if col == best_model_column:
+            p_vals.append(1)
+        # if the two cols are identical, return 1
+        elif all(pred_df[col].values == best_model_preds.values):
+            print(f"Identical predictions for {col} and {best_model_column}")
             p_vals.append(1)
         else:
             p_vals.append(scipy.stats.wilcoxon(best_model_preds, pred_df[col])[1])
@@ -299,9 +309,9 @@ def return_baseregressor_preds(basemodel_results, n_basetrain_cv=None, verbose=F
             Xunseen = pd.concat([Xts, X_hld], axis=0)
             assert len(set(Xtr.index).intersection(set(Xunseen.index))) == 0, f"Overlap between train and unseen: {set(Xtr.index).intersection(set(Xunseen.index))}"
             _, dev_cv_preds = return_cv_train_test_regressor_preds(Xtr, model, n_cv=n_basetrain_cv, verbose=verbose)
-            dev_cv_preds.columns = [f"{model_name}_{scorename}" for scorename in symptom_scorenames]
+            dev_cv_preds.columns = [f"{fset}_{model_name}_{scorename}" for scorename in symptom_scorenames]
             yunseen = model.predict(Xunseen)
-            yunseen = pd.DataFrame(yunseen, columns=[f"{model_name}_{scorename}" for scorename in symptom_scorenames], index=Xunseen.index)
+            yunseen = pd.DataFrame(yunseen, columns=[f"{fset}_{model_name}_{scorename}" for scorename in symptom_scorenames], index=Xunseen.index)
 
             all_dev_preds[fset][model_name] = dev_cv_preds
             all_unseen_preds[fset][model_name] = yunseen
@@ -310,9 +320,9 @@ def return_baseregressor_preds(basemodel_results, n_basetrain_cv=None, verbose=F
                 feature_data[fset] = {'Xtr': Xtr, 'Xts': Xts, 'X_hld': X_hld}
             else:
                 # make sure the training data is the same
-                assert np.array_equal(Xtr.values, feature_data[fset]['Xtr'].values, equal_nan=True), "Training data does not match"
-                assert np.array_equal(Xts.values, feature_data[fset]['Xts'].values, equal_nan=True), "Testing data does not match"
-                assert np.array_equal(X_hld.values, feature_data[fset]['X_hld'].values, equal_nan=True), "Holdout data does not match"
+                assert np.array_equal(Xtr.values.astype(float), feature_data[fset]['Xtr'].values.astype(float), equal_nan=True), "Training data does not match"
+                assert np.array_equal(Xts.values.astype(float), feature_data[fset]['Xts'].values.astype(float), equal_nan=True), "Testing data does not match"
+                assert np.array_equal(X_hld.values.astype(float), feature_data[fset]['X_hld'].values.astype(float), equal_nan=True), "Holdout data does not match"
                 assert all([all(Xtr.index == feature_data[fset]['Xtr'].index), all(Xts.index == feature_data[fset]['Xts'].index), all(X_hld.index == feature_data[fset]['X_hld'].index)]), "Indices do not match"
 
     # assert all([all(all_dev_preds[which_featuresets[0]][model_names[0]].index == all_dev_preds[fs][mn].index) for fs in which_featuresets for mn in model_names])
@@ -326,6 +336,7 @@ def return_baseregressor_preds(basemodel_results, n_basetrain_cv=None, verbose=F
 
     # unseen_pred_groups = all_unseen_preds[which_featuresets[0]][model_names[0]].index
 
+    
     dev_preds = pd.concat([all_dev_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
     unseen_preds = pd.concat([all_unseen_preds[fs][mn] for fs in which_featuresets for mn in model_names], axis=1)
 
@@ -525,11 +536,11 @@ def return_cv_train_test_regressor_preds(X, model, n_cv=None, base_model=True, v
         assert len(set(groups_train).intersection(set(groups_test))) == 0, f"Overlap between train and test: {set(groups_train).intersection(set(groups_test))}"
         
         # fits the model
-        try:
-            # set the clf n_jobs to 1 to avoid memory issues
-            clf.set_params(n_jobs=1)
-        except:
-            print(f"Could not set n_jobs for {clf_name}")
+        # try:
+        #     # set the clf n_jobs to 1 to avoid memory issues
+        #     clf.set_params(n_jobs=1)
+        # except:
+        #     print(f"Could not set n_jobs for {clf_name}")
         clf.fit(X_train, y_train)
         testing_preds[test_idx, :] = clf.predict(X_test)
         # assert len(train_idx) == X_proctr.shape[0]-1
@@ -692,7 +703,7 @@ def plot_results(results, cv_ensemble_split_dict=None, include_average=True, fon
         
     return mean_std_df
 
-def train_metaregressor_on_preds(basepred_df: pd.DataFrame, cv:int=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=5):
+def train_metaregressor_on_preds(basepred_df: pd.DataFrame, n_cv:int=5, metalearners=['rf', 'lr', 'xgb'], n_jobs=5):
     """
     Trains the hypertuned metalearners on the predictions of the base models
     Inputs:
@@ -710,11 +721,11 @@ def train_metaregressor_on_preds(basepred_df: pd.DataFrame, cv:int=5, metalearne
     assert cv > 1, "cv must be greater than 1"
     assert type(basepred_df) == pd.DataFrame, "pred_df must be a DataFrame"
 
-    if cv is None:
+    if n_cv is None:
         cv = sklearn.model_selection.LeaveOneOut()
         n_cv = cv.get_n_splits(basepred_df, fu.get_y_from_df(basepred_df))
     else:
-        n_cv = cv
+        cv = n_cv
 
     fitted_models = {}
     metamodel_fitscores = {}
@@ -780,7 +791,7 @@ def test_regmodels_on_unseen_data(metalearner_dict, test_pred_df, metalearners=[
     assert type(metalearner_dict) == dict, "metalearner_dict must be a dictionary"
     assert type(test_pred_df) == pd.DataFrame, "test_pred_df must be a DataFrame"
     assert all([f'metalearner_{metalearner}' in metalearner_dict.keys() for metalearner in metalearners]), "metalearner_dict must contain all metalearners"
-    assert all([sklearn.utils.validation.check_is_fitted(metalearner_dict[f'metalearner_{metalearner}']) for metalearner in metalearners]), "metalearners must be fitted"
+    [sklearn.utils.validation.check_is_fitted(metalearner_dict[f'metalearner_{metalearner}']) for metalearner in metalearners]
     
     
     unseen_score_pred_dict = {}
@@ -789,13 +800,14 @@ def test_regmodels_on_unseen_data(metalearner_dict, test_pred_df, metalearners=[
         metalearner_pred = fitted_mdl.predict(test_pred_df)
         y_test = fu.get_reg_from_df(test_pred_df)
 
-        unseen_score_pred_dict[metalearner] = mu.compute_select_multiout_scores(y_test, metalearner_pred)
+        unseen_score_pred_dict[metalearner] = mu.compute_select_multireg_scores(y_test, metalearner_pred, y_test.columns)
         unseen_score_pred_dict[metalearner]['preds'] = metalearner_pred
         
     score_names = ['rmse', 'rrmse', 'spearman', 'pearson']
     score_df_dict = {metalearner: {f"{col}_{score}": unseen_score_pred_dict[metalearner][col][score] for col in y_test.columns for score in score_names} for metalearner in metalearners}
     for metalearner in metalearners:
-        score_df_dict[metalearner].update({unseen_score_pred_dict[metalearner]['aggregate']})
+        for key, item in unseen_score_pred_dict[metalearner]['aggregate'].items():
+            score_df_dict[metalearner][key] = item
     score_df = pd.DataFrame(score_df_dict).T # index: scores, columns: metalearners
 
     return unseen_score_pred_dict, score_df
@@ -884,7 +896,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### Train the metamodels using the dev and ival predictions
         print(f"Fitting metamodels on dev predictions")
-        fitted_metamodels, metamodel_fitscores = train_metaregressor_on_preds(select_dev_ival_pred_df, cv=n_metatrain_cv, n_jobs=n_jobs)
+        fitted_metamodels, metamodel_fitscores = train_metaregressor_on_preds(select_dev_ival_pred_df, n_cv=n_metatrain_cv, n_jobs=n_jobs)
 
         ### Test the metamodels on the holdout data
         print(f"Testing metamodels on unseen data")
@@ -892,7 +904,7 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
 
         ### Save the results
         print(f"Saving the default split results")
-        default_results_saved = fmodel.save_split_results(default_split_results, default_results_table, fitted_metamodels, default_savepath, optional_savables={'metamodel_fitscores': metamodel_fitscores, 'dev_basepreds': dev_pred_df, 'unseen_basepreds': unseen_pred_df})
+        default_results_saved = fmodel.save_split_results(default_split_results, default_savepath, results_table=default_results_table, fitted_metamodels=fitted_metamodels, optional_savables={'metamodel_fitscores': metamodel_fitscores, 'dev_basepreds': dev_pred_df, 'unseen_basepreds': unseen_pred_df})
 
         ### Repeat the process for n_splits
         print(f"Running the final metamodel on n_splits")
@@ -905,6 +917,9 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         all_results = {
             'default': default_split_results,
             'n_splits': n_split_results,
+            'default_results_table': default_results_table,
+            'overall_perturbation_results_table': overall_perturbation_results_df,
+            'perturbation_split_results_table': split_results_df
         }
 
     else:
@@ -922,8 +937,10 @@ def main(which_featuresets=["eeg", "ecg"], n_splits=10, late_fuse=True, savepath
         }
 
 
-    print(f"Finished running the final metamodel")
-
+    print(f"Finished running the final metamodel\n Default results:")
+    print(all_results['default_results_table'].to_latex())
+    print(f"Overall perturbation results:")
+    print(all_results['overall_perturbation_results_table'].to_latex())
     return all_results
 
 def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV Scores for Each Classifier"):
@@ -944,15 +961,16 @@ def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV S
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the final ensemble model')
     parser.add_argument('--delay', type=int, default=0, help='Delay in seconds before running the script')
-    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg'], help='Which featuresets to use')
+    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg', 'ecg'], help='Which featuresets to use')
     parser.add_argument('--savepath', type=str, default=BASEREGRESSORS_SAVEPATH, help='Path to the baseregressors')
-    parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=False)
+    parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=True)
     parser.add_argument('--internal_folder', type=str, default='data/internal/', help='Path to the internal folder')
     parser.add_argument('--n_splits', type=int, default=10, help='Number of splits for the ensemble')
     parser.add_argument('--metalearners', type=str, nargs='+', default=['rf', 'lr', 'xgb'], help='Metalearners to use')
     parser.add_argument('--n_jobs', type=int, default=1, help='Number of jobs to run the metamodel gridsearch')
     parser.add_argument('--n_basetrain_cv', type=int, default=None, help='Number of splits to use for training the baselearners')
     parser.add_argument('--n_metatrain_cv', type=int, default=5, help='Number of splits for the ensemble')
+    parser.add_argument('--reload_results', action=argparse.BooleanOptionalAction, help='Whether to reload the results if they already exist', default=True)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, help='Whether to print out the progress of the function', default=True)
     args = parser.parse_args()
 

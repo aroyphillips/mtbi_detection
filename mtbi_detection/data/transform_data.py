@@ -3,18 +3,23 @@
 import time
 import mne
 import numpy as np
-import mtbi_detection.data.load_open_closed_data as locd
-import mtbi_detection.data.data_utils as du
 import os
 import json
 import argparse
 import scipy
 import pprint
 from joblib import Parallel, delayed
+import dotenv
 
+import mtbi_detection.data.load_open_closed_data as locd
+import mtbi_detection.data.data_utils as du
 
-DATAPATH = open('extracted_path.txt', 'r').read().strip() 
-LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
+dotenv.load_dotenv()
+DATAPATH = os.getenv('EXTRACTED_PATH')
+LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
+
+# DATAPATH = open('extracted_path.txt', 'r').read().strip() 
+# LOCD_DATAPATH = open('open_closed_path.txt', 'r').read().strip()
 
 def main(locd_params = {
         'l_freq': 0.3,
