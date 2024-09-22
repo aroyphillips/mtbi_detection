@@ -138,7 +138,7 @@ def save_protocol(data_df, savepath):
         start = time.time()
         print(f"Saving subject {subj} ({idx}/{len(unique_subjects)})", end='\r')
         # check if there is a folder for this subject savepath+subj
-        savepathdir = os.path.join(savepath, subj)
+        savepathdir = os.path.join(savepath, str(subj))
         if not os.path.exists(savepathdir):
             os.mkdir(savepathdir)
         

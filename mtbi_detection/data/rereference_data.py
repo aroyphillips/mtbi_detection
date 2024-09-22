@@ -4,7 +4,7 @@ import itertools
 
 def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method='ipsilateral', keep_refs=False, include_ecg=False, ecg_channel='X1', verbose=0):
     """
-    Rereference the raw.pick_channels(channels) data to the method given.
+    Rereference the raw.pick(channels) data to the method given.
     Inputs:
         raw: mne.io.Raw object
         channels: list of channels to rereference (must include reference channels)
@@ -15,7 +15,7 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
         new_raw: referenced mne raw object
     """
     if channels is not None:
-        raw_copy = raw.copy().pick_channels(channels, ordered=True)
+        raw_copy = raw.copy().pick(channels)
         new_raw = raw_copy.copy()
     else:
         raw_copy = raw.copy()
@@ -29,7 +29,7 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
             for ch in channels:
                 # get the other channels
                 other_channels = list(channel_set - set([ch]))
-                raw_copy[ch] = raw_copy[ch][0] - raw_copy.copy().pick_channels(other_channels, ordered=True).get_data().mean(axis=0)
+                raw_copy[ch] = raw_copy[ch][0] - raw_copy.copy().pick(other_channels).get_data().mean(axis=0)
             new_raw = raw_copy
         elif n > 1:
             # len(channels) choose n combinations of channels
@@ -39,18 +39,18 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
             new_raw_data = np.zeros((len(channel_combos), raw_copy.get_data().shape[1]))
             for i, combo in enumerate(channel_combos):
                 other_channels = list(channel_set - set(combo))
-                new_raw_data[i, :] = raw_copy.copy().pick_channels(combo, ordered=True).get_data().mean(axis=0) - raw_copy.copy().pick_channels(other_channels, ordered=True).get_data().mean(axis=0)
+                new_raw_data[i, :] = raw_copy.copy().pick(combo).get_data().mean(axis=0) - raw_copy.copy().pick(other_channels).get_data().mean(axis=0)
             new_raw = mne.io.RawArray(new_raw_data, new_info, verbose=False)
     elif method == 'avg':
         # first remove the reference channels
         new_raw_copy = raw_copy.copy().drop_channels(reference_channels)
-        new_raw = new_raw_copy.set_eeg_reference(ref_channels='average', projection=False)
+        new_raw = new_raw_copy.set_eeg_reference(ref_channels='average', projection=False, verbose=False)
     elif method == 'Cz':
-        new_raw = raw_copy.set_eeg_reference(ref_channels=['Cz'], projection=False)
+        new_raw = raw_copy.set_eeg_reference(ref_channels=['Cz'], projection=False, verbose=False)
     elif method == 'A1':
-        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1'], projection=False)
+        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1'], projection=False, verbose=False)
     elif method == 'linked':
-        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1', 'A2'], projection=False)
+        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1', 'A2'], projection=False, verbose=False)
     elif method == 'ipsilateral':
         new_raw_copy = raw_copy.copy()
         for ch in channels:
@@ -81,9 +81,9 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
                 pass
         new_raw = new_raw_copy
     elif method == 'A1':
-        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1'], projection=False)
+        new_raw = raw_copy.set_eeg_reference(ref_channels=['A1'], projection=False, verbose=False)
     elif method == 'A2':
-        new_raw = raw_copy.set_eeg_reference(ref_channels=['A2'], projection=False)
+        new_raw = raw_copy.set_eeg_reference(ref_channels=['A2'], projection=False, verbose=False)
     elif method.upper() == 'REST':
         ten_twenty = mne.channels.make_standard_montage('standard_1020')
         # throw away any eeg channels not in the montage
@@ -92,12 +92,12 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
             raw_copy = raw_copy.rename_channels({'T1': 'FT9'})  # https://www.acns.org/UserFiles/file/EEGGuideline2Electrodenomenclature_final_v1.pdf
         if 'T2' in raw_copy.ch_names:
             raw_copy = raw_copy.rename_channels({'T2': 'FT10'})
-        raw_copy = raw_copy.copy().pick_channels([ch for ch in raw_copy.ch_names if ch in ten_twenty.ch_names and ch not in reference_channels])
+        raw_copy = raw_copy.copy().pick([ch for ch in raw_copy.ch_names if ch in ten_twenty.ch_names and ch not in reference_channels])
         raw_copy.set_montage(ten_twenty)
         sphere = mne.make_sphere_model("auto", "auto", raw_copy.info)
         src = mne.setup_volume_source_space(sphere=sphere, exclude=30.0, pos=15.0)
         forward = mne.make_forward_solution(raw_copy.info, trans=None, src=src, bem=sphere)
-        new_raw = raw_copy.copy().set_eeg_reference("REST", forward=forward)
+        new_raw = raw_copy.copy().set_eeg_reference("REST", forward=forward, verbose=False)
     elif method.upper() == 'CSD':
         ten_twenty = mne.channels.make_standard_montage('standard_1020')
         # throw away any eeg channels not in the montage
@@ -105,7 +105,7 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
             raw_copy = raw_copy.rename_channels({'T1': 'FT9'})  # https://www.acns.org/UserFiles/file/EEGGuideline2Electrodenomenclature_final_v1.pdf
         if 'T2' in raw_copy.ch_names:
             raw_copy = raw_copy.rename_channels({'T2': 'FT10'})
-        raw_copy = raw_copy.copy().pick_channels([ch for ch in raw_copy.ch_names if ch in ten_twenty.ch_names and ch not in reference_channels], verbose=verbose)
+        raw_copy = raw_copy.copy().pick([ch for ch in raw_copy.ch_names if ch in ten_twenty.ch_names and ch not in reference_channels], verbose=verbose)
         raw_copy.set_montage(ten_twenty)
         new_raw = mne.preprocessing.compute_current_source_density(raw_copy.copy(), verbose=verbose)
     elif method.lower() == 'none':
@@ -125,7 +125,7 @@ def rereference_raw(raw, channels=None, reference_channels=['A1', 'A2'], method=
     if include_ecg:
         # add the ECG channel back in
         if ecg_channel in raw.ch_names:
-            ecg_chanel_raw  = raw.copy().pick_channels([ecg_channel])
+            ecg_chanel_raw  = raw.copy().pick([ecg_channel])
             new_raw = new_raw.add_channels([ecg_chanel_raw], force_update_info=True)
         else:
             raise ValueError(f"ECG channel {ecg_channel} not in raw channels")

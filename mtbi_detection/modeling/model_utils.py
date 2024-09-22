@@ -584,6 +584,7 @@ def compute_select_multireg_scores(y_true, y_pred, col_names):
         pearson = stats.pearsonr(y_true[col], y_pred[:, idx])[0]
 
         out_scores[col] = {'rmse': rmse, 'rrmse': rrmse, 'spearman': spearman, 'pearson': pearson}
+        
     avg_rmse = fu.avg_rmse(y_true.values, y_pred)
     avg_rrmse = fu.avg_rank_rmse(y_true.values, y_pred)
     stacked_spearman = fu.stacked_spearman_pred(y_true.values, y_pred)

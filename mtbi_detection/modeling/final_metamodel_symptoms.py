@@ -443,8 +443,10 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
         }
 
     # tabularize the split results
-    score_types = all_split_results['split_0']['holdout_results']['rf']['scores'].keys()
-    split_results_for_pandas = {score_type: [] for score_type in score_types}
+    symptom_names = fu.get_reg_from_df(select_split_holdout_preds).columns
+    score_types = all_split_results['split_0']['holdout_results']['rf'][symptom_names[0]].keys()
+    aggr_score_types = all_split_results['split_0']['holdout_results']['rf']['aggregate'].keys()
+    split_results_for_pandas = {f"{symptom_name}_{score_type}": [] for score_type in score_types for symptom_name in symptom_names}
     split_results_for_pandas['split'] = []
     split_results_for_pandas['metalearner'] = []
     for metalearner in metalearners:
@@ -452,8 +454,10 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
             split_results_for_pandas['split'].append(f"split_{splitdx}")
             split_results_for_pandas['metalearner'].append(metalearner)
             for score in score_types:
-                split_results_for_pandas[score].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['scores'][score])
-
+                for symptom_name in symptom_names:
+                    split_results_for_pandas[f"{symptom_name}_{score}"].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner][symptom_name][score])
+            for score in aggr_score_types:
+                split_results_for_pandas[f"aggregate_{score}"].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['aggregated'][score])
     split_results_df = pd.DataFrame(split_results_for_pandas)
     
     # now aggregate the results
@@ -470,8 +474,13 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
     for model in overall_preds.keys():
         overall_preds[model] = np.array(overall_preds[model])
         perturbation_scores[model] = mu.compute_select_multireg_scores(overall_symptoms, overall_preds[model], unseen_symptoms.columns)
-
-    perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner][score] for score in score_types] for metalearner in metalearners}, index=score_types)
+    
+    perturbation_score_dict = {metalearner: {f"{symptom_name}_{score}": [perturbation_scores[metalearner][score][symptom_name] for symptom_name in symptom_names] for score in score_types} for metalearner in metalearners}
+    for metalearner in metalearners:
+        for score in aggr_score_types:
+            split_results_df[f"aggregate_{score}"] = [perturbation_scores[metalearner][score] for _ in range(split_results_df.shape[0])]
+        
+    perturbation_score_df = pd.DataFrame(perturbation_score_dict).T
     all_split_results = {
         'split_results': all_split_results,
         'perturbation_scores': perturbation_scores
@@ -800,7 +809,7 @@ def test_regmodels_on_unseen_data(metalearner_dict, test_pred_df, metalearners=[
         metalearner_pred = fitted_mdl.predict(test_pred_df)
         y_test = fu.get_reg_from_df(test_pred_df)
 
-        unseen_score_pred_dict[metalearner] = mu.compute_select_multireg_scores(y_test, metalearner_pred, y_test.columns)
+        unseen_score_pred_dict[metalearner]= mu.compute_select_multireg_scores(y_test, metalearner_pred, y_test.columns)
         unseen_score_pred_dict[metalearner]['preds'] = metalearner_pred
         
     score_names = ['rmse', 'rrmse', 'spearman', 'pearson']

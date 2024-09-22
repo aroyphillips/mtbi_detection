@@ -43,7 +43,15 @@ def find_5min_files(datapath):
     Returns:
         files: list of paths to the crop files
     """    
-    files = glob.glob(f'{datapath}*/*_raw.fif')
+    try:
+        fivemin_savepath = os.getenv('FIVEMIN_PATH')
+    except:
+        fivemin_savepath = os.path.join(os.path.dirname(datapath, 'five_min_segments'))
+        if not os.path.exists(fivemin_savepath):
+            raise ValueError(f'five_min_segments folder does not exist at {fivemin_savepath}')
+    
+
+    files = glob.glob(f'{fivemin_savepath}*/*/*_raw.fif')
     return files
 
 def load_fif_from_subject(subject, fif_files, timepoint='baseline', preload=False, verbose=False, as_paths=False):

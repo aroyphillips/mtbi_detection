@@ -47,7 +47,7 @@ def main(n_subjs=152, tables_folder='data/tables/', fivemin_savepath=FIVEMIN_PAT
 
     loading_start = time.time()
     for sdx, subj_id in enumerate(subj_ids):
-        print(f"______________________\nLoading subject {subj_id} ({sdx+1}/{len(subj_ids)})\n______________________")
+        print(f"Loading subject {subj_id} ({sdx+1}/{len(subj_ids)})")
         subj_start = time.time()
         # get the subject's annotations
         subj_annotations = annotations_df[annotations_df["Study ID"] == subj_id]
@@ -88,8 +88,6 @@ def main(n_subjs=152, tables_folder='data/tables/', fivemin_savepath=FIVEMIN_PAT
             cropped_raw = cropped_raw.resample(SAMPLING_RATE, npad='auto')
         assert cropped_raw.get_data().shape[1] == DURATION * SAMPLING_RATE + 1, "Raw data is not {} seconds long".format(DURATION)
 
-        print(start_time, end_time)
-
         # now we save this however we want
         save_dir = os.path.join(fivemin_savepath, str(int(subj_id)))
         # save the raw file and make the directory if it doesn't exist
@@ -97,19 +95,21 @@ def main(n_subjs=152, tables_folder='data/tables/', fivemin_savepath=FIVEMIN_PAT
             os.makedirs(save_dir)
         savefilename = f'baseline_{DURATION}s_subj{int(subj_id)}_raw.fif'
         savepath = os.path.join(save_dir, savefilename)
-        cropped_raw.save(savepath, overwrite=True)
+        cropped_raw.save(savepath, overwrite=True, verbose=False)
 
         raw_list.append(raw)
 
-        print(f"Subject {subj_id} took {time.time() - subj_start} seconds to load")
+        print(f"\tSubject {subj_id} took {time.time() - subj_start} seconds to load")
 
     loading_end = time.time()
     common_channels = rd.find_common_channels_from_list(raw_list)
+    dotenv.set_key(dotenv.find_dotenv(), 'FIVEMIN_PATH', fivemin_savepath)
     print(f"Common channels are the same set as the channels we want? {set(common_channels) == set(CHANNELS)}")
     print(f"Common channels: {common_channels}")
     print(f"Loading took {loading_end - loading_start} seconds")
     # baseline_files
     print("DONE")
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract 5 minute segments")
