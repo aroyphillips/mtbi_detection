@@ -4,7 +4,7 @@ import os
 import time
 from numpy.typing import NDArray
 import dotenv
-
+import argparse
 import antropy as ant
 import hurst
 import mne
@@ -616,4 +616,27 @@ def main(open_closed_params, channels, window_len=10, overlap=1, verbosity=1, sa
     return all_complexity_feature_df
             
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    ## LOCD params
+    parser.add_argument('--l_freq', type=float, default=0.3)
+    parser.add_argument('--h_freq', type=float, default=None)
+    parser.add_argument('--fs_baseline', type=float, default=500)
+    parser.add_argument('--order', type=int, default=6)
+    parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
+    parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
+    parser.add_argument('--num_subjs', type=int, default=151)
+    parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--reference_method', type=str, default='CSD')
+    parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
+    parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
+    parser.add_argument('--filter_ecg', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--late_filter_ecg', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--ecg_l_freq', type=float, default=8)
+    parser.add_argument('--ecg_h_freq', type=float, default=16)
+    parser.add_argument('--ecg_thresh', type=str, default='auto')
+    parser.add_argument('--ecg_method', type=str, default='correlation')
+    parser.add_argument('--include_ecg', action=argparse.BooleanOptionalAction, default=True)
+    args = parser.parse_args()
+    CHANNELS = ['C3', 'C4', 'Cz', 'F3', 'F4', 'F7', 'F8', 'Fp1', 'Fp2', 'Fz', 'O1', 'O2', 'P3', 'P4', 'Pz','T3', 'T4', 'T5', 'T6']
+    all_complexity_features = main(vars(args), channels=CHANNELS)

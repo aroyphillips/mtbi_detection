@@ -51,8 +51,13 @@ def main(transform_data_dict=None, featurepath=FEATUREPATH, power_increment=None
     savepath = os.path.join(featurepath, 'maximal_power')
     if not os.path.exists(savepath):
         os.makedirs(savepath)
-    if percentile_edge_method == 'custom':
+    if percentile_edge_method == 'simple_custom':
         percentile_edges = [0, 0.01, 0.05, 0.1, 0.15, 0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.99, 1]
+    elif percentile_edge_method == 'custom':
+        lin20 = np.linspace(0, 1, 20)
+        log20 = np.logspace(-2, 0, 20, base=10)
+        reverse_log20 = 1-np.logspace(-2, 0, 20, base=10)
+        percentile_edges =  list(np.unique(np.concatenate([lin20, log20, reverse_log20])))
     else:
         percentile_edges = None
     power_params = {'power_increment': power_increment, 'num_powers': num_powers} if percentile_edge_method == 'automated' else {'percentile_edges': percentile_edges}

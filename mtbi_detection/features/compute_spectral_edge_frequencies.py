@@ -40,8 +40,13 @@ def main(transform_data_dict=None, channels=CHANNELS, save=False, featurepath=FE
     savepath = os.path.join(featurepath, 'spectral_edge_frequencies')
     if not os.path.exists(savepath):
         os.makedirs(savepath)
-    if spectral_edge_method == 'custom':
+    if spectral_edge_method == 'simple_custom':
         spectral_edges = [0.001, 0.01, 0.05, 0.1, 0.15, 0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.99, 0.999]
+    elif spectral_edge_method == 'custom':
+        lin20 = np.linspace(0, 1, 20)
+        log20 = np.logspace(-2, 0, 20, base=10)
+        reverse_log20 = 1-np.logspace(-2, 0, 20, base=10)
+        spectral_edges =  list(np.unique(np.concatenate([lin20, log20, reverse_log20])))
     else:
         spectral_edges = None
     spectral_params = {'edge_increment': edge_increment, 'num_powers': num_edges, 'log_edges':log_edges, 'reverse_log': reverse_log} if spectral_edge_method == 'manual' else {'spectral_edges': spectral_edges}

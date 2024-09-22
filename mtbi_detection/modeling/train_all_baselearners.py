@@ -27,7 +27,7 @@ MODEL_NAME_DICT = {
     "lre": "LogisticRegression",
 }
 
-
+dotenv.load_dotenv()
 DATAPATH = os.getenv('EXTRACTED_PATH')
 LOCD_DATAPATH = os.getenv('OPEN_CLOSED_PATH')
 # DATAPATH = open('extracted_path.txt', 'r').read().strip() 
@@ -148,7 +148,11 @@ def main(n_jobs=3, n_points=1, min_run_time=15, feat_shortcuts = ["eeg", "ecg", 
             st = time.time()
             if uin == "y":
                 print("Running")
-                subprocess.run(call, shell=True)
+                subrn = subprocess.run(call, shell=True)
+                # if there was an error, print the output
+                if subrn.returncode != 0:
+                    print("Error in subprocess")
+                    print(subrn)
             else:
                 print("Exiting")
                 sys.exit(0)
@@ -173,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument('--duration', type=int, default=2, help='Duration to check the number of idle cores')
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
     parser.add_argument('--outbase', type=str, default=OUTBASE, help="The path to save the output files")
-    parser.add_argument('--wait_time', type=int, default=3, help="The time to wait for user response (seconds)")
+    parser.add_argument('--wait_time', type=int, default=10, help="The time to wait for user response (seconds)")
 
     args = parser.parse_args()
 

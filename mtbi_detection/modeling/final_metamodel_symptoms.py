@@ -413,7 +413,7 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
     unseen_symptoms = fu.get_reg_from_df(unseen_basepreds)
     unseen_labels = fu.get_y_from_df(unseen_basepreds)
     unseen_groups = unseen_basepreds.index.values
-    split_results = {}
+    all_split_results = {}
     holdout_cv = sklearn.model_selection.StratifiedShuffleSplit(n_splits=n_splits, test_size=0.5, random_state=42)
     for split_idx, (train_idx, test_idx) in enumerate(holdout_cv.split(unseen_basepreds, unseen_labels)):
         print(f"Running split {split_idx+1}/{n_splits}")
@@ -428,12 +428,12 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
 
         ival_symptoms, holdout_symptoms = fu.get_reg_from_df(select_split_ival_preds).values, fu.get_reg_from_df(select_split_holdout_preds).values
 
-        fitted_split_metamodels, fitted_split_fitscores = train_metaregressor_on_preds(select_split_dev_ival_preds, select_split_holdout_preds, n_cv=n_metatrain_cv, n_jobs=n_jobs)
+        fitted_split_metamodels, fitted_split_fitscores = train_metaregressor_on_preds(select_split_dev_ival_preds, n_cv=n_metatrain_cv, n_jobs=n_jobs)
 
         split_results, _ = test_regmodels_on_unseen_data(fitted_split_metamodels, select_split_holdout_preds, metalearners=metalearners)
 
 
-        split_results[f'split_{split_idx}'] = {
+        all_split_results[f'split_{split_idx}'] = {
             'select_cols': select_split_dev_preds.columns,
             'ival_groups': ival_groups,
             'holdout_groups': holdout_groups,
@@ -443,7 +443,7 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
         }
 
     # tabularize the split results
-    score_types = split_results['rf']['scores'].keys()
+    score_types = all_split_results['split_0']['holdout_results']['rf']['scores'].keys()
     split_results_for_pandas = {score_type: [] for score_type in score_types}
     split_results_for_pandas['split'] = []
     split_results_for_pandas['metalearner'] = []
@@ -452,7 +452,7 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
             split_results_for_pandas['split'].append(f"split_{splitdx}")
             split_results_for_pandas['metalearner'].append(metalearner)
             for score in score_types:
-                split_results_for_pandas[score].append(split_results[f'split_{splitdx}']['holdout_results'][metalearner]['scores'][score])
+                split_results_for_pandas[score].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['scores'][score])
 
     split_results_df = pd.DataFrame(split_results_for_pandas)
     
@@ -460,11 +460,11 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
     overall_symptoms = [label for split_idx in range(n_splits) for label in split_results[f'split_{split_idx}']['holdout_symptoms']]
     overall_preds = {}
     for split_idx in range(n_splits):
-        split_results = split_results[f'split_{split_idx}']['holdout_results']
-        for model in split_results.keys():
+        subsplit_results = all_split_results[f'split_{split_idx}']['holdout_results']
+        for model in subsplit_results.keys():
             if model not in overall_preds.keys():
                 overall_preds[model] = []
-            overall_preds[model].extend(split_results[model]['preds'])
+            overall_preds[model].extend(subsplit_results[model]['preds'])
 
     perturbation_scores = {}
     for model in overall_preds.keys():
@@ -473,7 +473,7 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
 
     perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner][score] for score in score_types] for metalearner in metalearners}, index=score_types)
     all_split_results = {
-        'split_results': split_results,
+        'split_results': all_split_results,
         'perturbation_scores': perturbation_scores
     }
     return all_split_results, split_results_df, perturbation_score_df
@@ -717,8 +717,8 @@ def train_metaregressor_on_preds(basepred_df: pd.DataFrame, n_cv:int=5, metalear
         - metamodel_fitscores: dictionary containing the best scores for each metalearner,
              e.g. {'best_scores_rf': mcc_score_list, 'best_scores_lr': mcc_score_list, 'best_scores_xgb': mcc_score_list}
     """
-    assert type(cv) == int, "cv must be an integer"
-    assert cv > 1, "cv must be greater than 1"
+    assert type(n_cv) == int, "cv must be an integer"
+    assert n_cv > 1, "cv must be greater than 1"
     assert type(basepred_df) == pd.DataFrame, "pred_df must be a DataFrame"
 
     if n_cv is None:
