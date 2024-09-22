@@ -16,6 +16,7 @@ dotenv.load_dotenv()
 DATAPATH = os.getenv('EXTRACTED_PATH')
 
 
+
 def load_open_closed_pathdict(datapath=DATAPATH, savepath=None, num_subjs=151, verbose=True, l_freq=0.3, h_freq=None, fs_baseline=500, order=6, notches=[60, 120, 180, 240], notch_width=[2, 1, 0.5, 0.5], reference_method='CSD', reference_channels=['A1', 'A2'], bad_channels=['T1', 'T2'], filter_ecg=True, ecg_l_freq=8, ecg_h_freq=16, ecg_thresh='auto', ecg_method='correlation', keep_refs=False, save=True, n_jobs=1, num_load_subjs=None, random_load=False, include_ecg=True, late_filter_ecg=False, skip_ui=False, tables_folder='data/tables/'):
     """
     Given parameters, load the open closed data for all subjects
