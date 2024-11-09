@@ -4,6 +4,7 @@ codebase_ecg_mtbi/
 
 # Data
 /data/
+notebooks/
 /notebooks/
 # Mac OS-specific storage files
 .DS_Store
