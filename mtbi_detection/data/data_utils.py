@@ -602,7 +602,7 @@ def clean_params_path(savepath, skip_ui=False):
     else:
         cleanpath.cleanpath(os.path.join(savepath, 'params'), skip_ui=skip_ui)
     
-def load_path_from_params(basepath, key_mappings, strict_search=True):
+def load_path_from_params(basepath, key_mappings, strict_search=True, skip_ui=False):
     """
     Given a basepath to a folder container parameters and a dictionary of key mappings, load the model and return it.
     Inputs:
@@ -613,11 +613,14 @@ def load_path_from_params(basepath, key_mappings, strict_search=True):
     NOTE: if there are multiple possible paths this will return the first one found
     """
     assert 'params' in os.listdir(basepath), f"params folder not found in {basepath}"
+    clean_params_path(basepath, skip_ui=skip_ui)
     baseparams_folder = os.path.join(basepath, 'params')
-    clean_params_path(baseparams_folder, skip_ui=True)
     params_folders = [f for f in os.listdir(baseparams_folder) if os.path.isdir(os.path.join(baseparams_folder, f))]
     modelpath = None
     for params_folder in params_folders:
+        if not os.path.exists(os.path.join(baseparams_folder, params_folder, 'params.json')):
+            print(f"Warning: params.json not found in {params_folder}")
+            continue
         with open(os.path.join(baseparams_folder, params_folder, 'params.json'), 'r') as f:
             params = json.load(f)
         if not all([key in params.keys() for key in key_mappings.keys()]):

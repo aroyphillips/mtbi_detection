@@ -7,7 +7,7 @@ import json
 import joblib
 import os 
 import pandas as pd
-
+import numpy.typing as npt
 from sklearn.utils.validation import check_is_fitted
 
 import mtbi_detection.features.feature_utils as fu
@@ -560,7 +560,7 @@ def print_multireg_scores(out_dict):
     print(f"Stacked Pearson: {out_dict['stacked_pearson']}")
     print(f"Stacked Spearman: {out_dict['stacked_spearman']}")
     
-def compute_select_multireg_scores(y_true, y_pred, col_names):
+def compute_select_multireg_scores(y_true: pd.DataFrame, y_pred: npt.NDArray, col_names: list) -> dict:
     """
     Compute the scores for the multi-output regression predictions
 
@@ -574,7 +574,7 @@ def compute_select_multireg_scores(y_true, y_pred, col_names):
         - out_scores: dictionary of scores 
             {'col_name': {'rmse': rmse, 'rrmse': rrmse, 'spearman': spearman, 'pearson': pearson}, 'aggregate': {'avg_rmse': avg_rmse, 'avg_rrmse': avg_rrmse, 'stacked_spearman': stacked_spearman, 'stacked_pearson': stacked_pearson}}
     """
-    
+    assert type(y_true) == pd.DataFrame, "y_true must be a pandas DataFrame"
     out_scores = {}
     for idx, col in enumerate(col_names):
 

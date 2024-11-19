@@ -95,7 +95,7 @@ def main(model_name='GaussianNB', which_features=['eeg'], wrapper_method='recurs
     if not skip_ui:
         du.clean_params_path(results_savepath, skip_ui=skip_ui)
     caf_params = caf.extract_all_params(choose_subjs=choose_subjs, skip_ui=skip_ui, **kwargs)
-    all_params = {**caf_params, 'which_features': which_features, 'model_name': model_name, 'wrapper_method': wrapper_method, 'n_jobs': n_jobs, 'n_hyper_cv': n_hyper_cv, 'n_fs_cv': n_fs_cv, 'step': step, 'search_method': search_method, 'n_points': n_points, 'n_iterations': n_iterations, 'n_fs_repeats': n_fs_repeats, 'n_hyper_repeats': n_hyper_repeats}
+    all_params = {**caf_params, 'which_features': which_features, 'model_name': model_name, 'wrapper_method': wrapper_method, 'n_hyper_cv': n_hyper_cv, 'n_fs_cv': n_fs_cv, 'step': step, 'search_method': search_method, 'n_points': n_points, 'n_iterations': n_iterations, 'n_fs_repeats': n_fs_repeats, 'n_hyper_repeats': n_hyper_repeats}
     savepath, found_match = du.check_and_make_params_folder(results_savepath, all_params, skip_ui=skip_ui)
     if found_match:
         print(f"Found a match for {all_params} in {savepath}")
@@ -597,14 +597,14 @@ if __name__ == '__main__':
     parser.add_argument('--h_freq', type=float, default=None)
     parser.add_argument('--fs_baseline', type=float, default=500)
     parser.add_argument('--order', type=int, default=6)
-    parser.add_argument('--notches', type=int, nargs='+', default=[60, 120, 180, 240])
-    parser.add_argument('--notch_width', type=float, nargs='+', default=[2, 1, 0.5, 0.25])
+    parser.add_argument('--notches', type=int, nargs='*', default=[60, 120, 180, 240])
+    parser.add_argument('--notch_width', type=float, nargs='*', default=[2, 1, 0.5, 0.25])
     parser.add_argument('--num_subjs', type=int, default=151)
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--reference_method', type=str, default='CSD')
-    parser.add_argument('--reference_channels', type=str, nargs='+', default=['A1', 'A2'])
+    parser.add_argument('--reference_channels', type=str, nargs='*', default=['A1', 'A2'])
     parser.add_argument('--keep_refs', action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument('--bad_channels', type=str, nargs='+', default=['T1', 'T2'])
+    parser.add_argument('--bad_channels', type=str, nargs='*', default=['T1', 'T2'])
     parser.add_argument('--filter_ecg', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--late_filter_ecg', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--ecg_l_freq', type=float, default=8)
@@ -662,16 +662,16 @@ if __name__ == '__main__':
     
     ## general params
     parser.add_argument('--verbosity', type=int, default=1, help="The verbosity for the complexity features")
-    parser.add_argument('--n_jobs', type=int, default=1)
+    parser.add_argument('--n_jobs', type=int, default=16)
     
     # main params
-    parser.add_argument('--n_hyper_cv', type=int, default=2, help="The number of folds to use for the grid search")
-    parser.add_argument('--n_fs_cv', type=int, default=2, help="The number of folds to use for the inner cross validation")
-    parser.add_argument('--n_fs_repeats', type=int, default=3, help="The number of times to repeat the feature cv")
-    parser.add_argument('--n_hyper_repeats', type=int, default=3, help="The number of times to repeat the hyperparameter cv")
+    parser.add_argument('--n_hyper_cv', type=int, default=3, help="The number of folds to use for the grid search")
+    parser.add_argument('--n_fs_cv', type=int, default=3, help="The number of folds to use for the inner cross validation")
+    parser.add_argument('--n_fs_repeats', type=int, default=2, help="The number of times to repeat the feature cv")
+    parser.add_argument('--n_hyper_repeats', type=int, default=2, help="The number of times to repeat the hyperparameter cv")
     parser.add_argument('--search_method', type=str, default='bayes', help="The search method to use for the grid search")
     parser.add_argument('--n_iterations', type=int, default=100, help="The number of random iterations to use for the random search")
-    parser.add_argument('--n_points', type=int, default=1, help="The number of points to use for the bayesian search")
+    parser.add_argument('--n_points', type=int, default=2, help="The number of points to use for the bayesian search")
     parser.add_argument('--results_savepath', type=str, default=RESULTS_SAVEPATH, help="The path to save the results of the grid search")
     parser.add_argument('--model_name', type=str, default='XGBClassifier', help="The ndame of the model to use")
     parser.add_argument('--outer_jobs', type=int, default=1, help="The number of jobs to use for the outer grid search")
@@ -679,7 +679,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip_ui', action=argparse.BooleanOptionalAction, default=False, help="Whether to skip the user interface")
 
     ## data subset
-    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg', 'ecg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
+    parser.add_argument('--which_features', nargs='+', type=str, default=['eeg'], help='Which features to use') # ['eeg', 'ecg', 'symptoms', 'selectsym']
     
     args = parser.parse_args()
     

@@ -439,9 +439,9 @@ def return_split_results(default_savepaths, n_splits=10, n_metatrain_cv=5, metal
 
     perturbation_scores = {}
     for model in overall_preds.keys():
-        overall_preds[model] = np.array(overall_preds[model])
-        overall_pred_probas[model] = np.array(overall_pred_probas[model])
-        perturbation_scores[model] = mu.compute_select_binary_scores(overall_labels, overall_preds[model], overall_pred_probas[model])
+        # overall_preds[model] = np.array(overall_preds[model])
+        # overall_pred_probas[model] = np.array(overall_pred_probas[model])
+        perturbation_scores[model] = mu.compute_select_binary_scores(overall_labels,  np.array(overall_preds[model]),  np.array(overall_pred_probas[model]))
 
     perturbation_score_df = pd.DataFrame({metalearner: [perturbation_scores[metalearner]['scores'][score] for score in score_types] for metalearner in metalearners}, index=score_types)
     all_split_results = {
@@ -1086,7 +1086,7 @@ def plot_cv_results(*dfs, fontsize=20, figsize=(10, 4), title="Training Set CV S
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the final ensemble model')
     parser.add_argument('--delay', type=int, default=0, help='Delay in seconds before running the script')
-    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['symptoms'], help='Which featuresets to use')
+    parser.add_argument('--which_featuresets', type=str, nargs='+', default=['eeg'], help='Which featuresets to use')
     parser.add_argument('--savepath', type=str, default=BASELEARNERS_SAVEPATH, help='Path to the baselearners')
     parser.add_argument('--late_fuse', action=argparse.BooleanOptionalAction, help='Whether to late fuse the features', default=True)
     parser.add_argument('--internal_folder', type=str, default='data/internal/', help='Path to the internal folder')

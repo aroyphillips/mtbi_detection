@@ -428,7 +428,7 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
 
         ival_symptoms, holdout_symptoms = fu.get_reg_from_df(select_split_ival_preds).values, fu.get_reg_from_df(select_split_holdout_preds).values
 
-        fitted_split_metamodels, fitted_split_fitscores = train_metaregressor_on_preds(select_split_dev_ival_preds, n_cv=n_metatrain_cv, n_jobs=n_jobs)
+        fitted_split_metamodels, fitted_linsplit_fitscores = train_metaregressor_on_preds(select_split_dev_ival_preds, n_cv=n_metatrain_cv, n_jobs=n_jobs)
 
         split_results, _ = test_regmodels_on_unseen_data(fitted_split_metamodels, select_split_holdout_preds, metalearners=metalearners)
 
@@ -447,6 +447,8 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
     score_types = all_split_results['split_0']['holdout_results']['rf'][symptom_names[0]].keys()
     aggr_score_types = all_split_results['split_0']['holdout_results']['rf']['aggregate'].keys()
     split_results_for_pandas = {f"{symptom_name}_{score_type}": [] for score_type in score_types for symptom_name in symptom_names}
+    for aggrscore in aggr_score_types:
+        split_results_for_pandas[f"aggregate_{aggrscore}"] = []
     split_results_for_pandas['split'] = []
     split_results_for_pandas['metalearner'] = []
     for metalearner in metalearners:
@@ -457,11 +459,12 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
                 for symptom_name in symptom_names:
                     split_results_for_pandas[f"{symptom_name}_{score}"].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner][symptom_name][score])
             for score in aggr_score_types:
-                split_results_for_pandas[f"aggregate_{score}"].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['aggregated'][score])
+                split_results_for_pandas[f"aggregate_{score}"].append(all_split_results[f'split_{splitdx}']['holdout_results'][metalearner]['aggregate'][score])
     split_results_df = pd.DataFrame(split_results_for_pandas)
     
     # now aggregate the results
-    overall_symptoms = [label for split_idx in range(n_splits) for label in split_results[f'split_{split_idx}']['holdout_symptoms']]
+    overall_symptoms = [symptoms for split_idx in range(n_splits) for symptoms in all_split_results[f'split_{split_idx}']['holdout_symptoms']]
+    overall_symptoms = pd.DataFrame(np.array(overall_symptoms), columns=symptom_names)
     overall_preds = {}
     for split_idx in range(n_splits):
         subsplit_results = all_split_results[f'split_{split_idx}']['holdout_results']
@@ -472,14 +475,15 @@ def return_split_regresults(default_savepaths, n_splits=10, n_metatrain_cv=5, me
 
     perturbation_scores = {}
     for model in overall_preds.keys():
-        overall_preds[model] = np.array(overall_preds[model])
-        perturbation_scores[model] = mu.compute_select_multireg_scores(overall_symptoms, overall_preds[model], unseen_symptoms.columns)
+        # overall_preds[model] = np.array(overall_preds[model])
+        perturbation_scores[model] = mu.compute_select_multireg_scores(overall_symptoms,  np.array(overall_preds[model]), unseen_symptoms.columns)
     
-    perturbation_score_dict = {metalearner: {f"{symptom_name}_{score}": [perturbation_scores[metalearner][score][symptom_name] for symptom_name in symptom_names] for score in score_types} for metalearner in metalearners}
+    perturbation_score_dict = {metalearner: {f"{symptom_name}_{score}": [perturbation_scores[metalearner][symptom_name][score] for symptom_name in symptom_names] for score in score_types} for metalearner in metalearners}
     for metalearner in metalearners:
         for score in aggr_score_types:
-            split_results_df[f"aggregate_{score}"] = [perturbation_scores[metalearner][score] for _ in range(split_results_df.shape[0])]
+            perturbation_score_dict[f"aggregate_{score}"] = [perturbation_scores[metalearner]['aggregate'][score] for _ in range(split_results_df.shape[0])]
         
+    print(f"Split results: {split_results_df.shape}, perturbation scores: {perturbation_score_dict}")
     perturbation_score_df = pd.DataFrame(perturbation_score_dict).T
     all_split_results = {
         'split_results': all_split_results,
